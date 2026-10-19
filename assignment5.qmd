@@ -164,25 +164,37 @@ all_sales <- all_sales |>
     full_basement = replace_na(full_basement, 0),
     finished_basement = replace_na(finished_basement, 0),
     brick_stone_ext = replace_na(brick_stone_ext, 0),
-    warmairfurnace = replace_na(warmairfurnace, 0),
+    warmairfurnace = replace_na(warmairfurnace, 0)
   )
 
 # salesprice is equal to or less than 1: likely to be sales that did not go to market
 all_sales <- all_sales |>
-  filter(sale_price > 1 | is.na(sale_price))
-
-# sales date must be between 2023 - 2025: keep within the time frame
-all_sales <- all_sales |>
   mutate(
     sale_date = as.Date(sale_date, format = "%B %d, %Y")
-  ) |>
+  )
+# sales date must be between 2023 - 2025: keep within the time frame
+train_clean <- all_sales |>
   filter(
+    split == "train",
+    !is.na(sale_price),
+    sale_price > 1,
+    !is.na(sale_date),
     between(
       sale_date,
       as.Date("2023-01-01"),
       as.Date("2025-12-31")
     )
   )
+
+# Keep test rows
+test_clean <- all_sales |>
+  filter(split == "test")
+
+# Recombine
+all_sales <- bind_rows(train_clean, test_clean)
+
+# Check the number of rows in each split
+all_sales |> count(split)
 
 ```
 
@@ -282,7 +294,76 @@ Start with a structure-only baseline. Then add features in steps you can learn f
 ```{r}
 #| label: part-2
 
+# Cleaned training data
+train <- all_sales |>
+  filter(split == "train")
 
+# Create projected coordinates for spatial analysis
+coords <- sf::st_coordinates(train)
+
+train <- train |>
+  mutate(
+    x_coord = coords[, 1],
+    y_coord = coords[, 2]
+  )
+
+# Set up model log
+model_log <- tibble(
+  model = character(),
+  added = character(),
+  cv_rmse = double(),
+  moran_i = double(),
+  notes = character()
+)
+
+# Function to log each model
+log_model <- function(name, formula, added, notes) {
+  tibble(
+    model = name,
+    added = added,
+    cv_rmse = cv_rmse(formula, train),
+    moran_i = moran_cv(formula, train),
+    notes = notes
+  )
+}
+
+## TO BE ADDED TO MODEL
+
+# M1: Neighborhood income
+# Replace median_income with your final joined variable name if needed
+# f1 <- sale_price ~ median_income
+
+# M2: Transit accessibility
+# f2 <- update(f1, . ~ . + transit_distance)
+
+# M3: Zoning and historical redlining
+# f3 <- update(f2, . ~ . + zoning_type + redlining_grade)
+
+# M4: Grocery stores and Whole Foods
+# f4 <- update(f3, . ~ . + grocery_distance + whole_foods_distance)
+
+# M5: Bars
+# f5 <- update(f4, . ~ . + bar_count)
+
+# M6: Universities and waterfront
+# f6 <- update(f5, . ~ . + university_distance + waterfront_distance)
+
+# Once the external data are joined and cleaned,
+# uncomment the model you want to test and log it.
+#
+# model_log <- bind_rows(
+#   model_log,
+#   log_model(
+#     "M1: Neighborhood income",
+#     f1,
+#     "Median household income",
+#     "Tests whether neighborhood income improves price prediction."
+#   )
+# )
+#
+# View the results after running models
+# model_log
+```
 ```
 
 #income
