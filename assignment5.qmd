@@ -292,6 +292,97 @@ Building age appears to be strongly associated with price so we might look at hi
 Start with a structure-only baseline. Then add features in steps you can learn from, logging each one. Keep the log in a tibble with columns `model`, `added`, `cv_rmse`, `moran_i`, `notes`.
 
 ```{r}
+#Loading data
+#ACS (preliminary list ot be added to
+# ACS data for Chicago / Cook County
+acs_tracts <- tidycensus::get_acs(
+  geography = "tract",
+  variables = c(
+    median_income = "B19013_001",
+    median_age = "B01002_001",
+    total_population = "B01003_001",
+    median_gross_rent = "B25064_001",
+    median_home_value = "B25077_001",
+    owner_occupied = "B25003_002",
+    renter_occupied = "B25003_003",
+    bachelors_or_higher = "B15003_022"
+  ),
+  state = "IL",
+  county = "Cook",
+  year = 2023,
+  output = "wide",
+  geometry = TRUE
+) |>
+  transmute(
+    GEOID,
+    median_income = median_incomeE,
+    median_age = median_ageE,
+    total_population = total_populationE,
+    median_gross_rent = median_gross_rentE,
+    median_home_value = median_home_valueE,
+    owner_occupied = owner_occupiedE,
+    renter_occupied = renter_occupiedE,
+    bachelors_or_higher = bachelors_or_higherE,
+    geometry
+  ) |>
+  sf::st_transform(3435)
+
+#Joining acs to houses 
+all_sales <- sf::st_join(
+  all_sales,
+  acs_tracts |>
+    select(
+      median_income,
+      median_age,
+      total_population,
+      median_gross_rent,
+      median_home_value,
+      owner_occupied,
+      renter_occupied,
+      bachelors_or_higher
+    ),
+  join = sf::st_within,
+  left = TRUE
+)
+
+
+# Fill missing ACS predictors using training medians (predicts so I dont have to drop rows)
+acs_vars <- c(
+  "median_income",
+  "median_age",
+  "total_population",
+  "median_gross_rent",
+  "median_home_value",
+  "owner_occupied",
+  "renter_occupied",
+  "bachelors_or_higher"
+)
+
+for (v in acs_vars) {
+
+  # Calculate the median using non-missing training values only
+  train_values <- all_sales[[v]][
+    all_sales$split == "train" &
+      !is.na(all_sales[[v]])
+  ]
+
+  fill_value <- median(train_values, na.rm = TRUE)
+
+  # Apply that value to missing observations in both splits
+  all_sales[[v]][is.na(all_sales[[v]])] <- fill_value
+}
+
+# Verify that no missing values remain in these ACS variables
+colSums(is.na(all_sales[, acs_vars]))
+
+# Refresh training data
+train <- all_sales |>
+  filter(split == "train")
+
+```
+
+
+```{r}
 #| label: part-2
 
 # Cleaned training data
@@ -329,41 +420,92 @@ log_model <- function(name, formula, added, notes) {
 
 ## TO BE ADDED TO MODEL
 
+##ACS VARIABLE
 # M1: Neighborhood income
-# Replace median_income with your final joined variable name if needed
-# f1 <- sale_price ~ median_income
+f1 <- sale_price ~ median_income
+model_log <- bind_rows(
+   model_log,
+   log_model(
+     "M1: Neighborhood income",
+     f1,
+     "Median household income",
+     "Tests whether neighborhood income improves price prediction."
+   )
+ )
 
-# M2: Transit accessibility
-# f2 <- update(f1, . ~ . + transit_distance)
+# M2: Add median age
+f2 <- update(f1, . ~ . + median_age)
 
-# M3: Zoning and historical redlining
-# f3 <- update(f2, . ~ . + zoning_type + redlining_grade)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M2: Add median age",
+    f2,
+    "Median household income + median age",
+    "Tests whether neighborhood age patterns improve prediction."
+  )
+)
 
-# M4: Grocery stores and Whole Foods
-# f4 <- update(f3, . ~ . + grocery_distance + whole_foods_distance)
+# M3: Add population
+f3 <- update(f2, . ~ . + total_population)
 
-# M5: Bars
-# f5 <- update(f4, . ~ . + bar_count)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M3: Add population",
+    f3,
+    "Total population",
+    "Tests whether neighborhood population adds predictive value."
+  )
+)
 
-# M6: Universities and waterfront
-# f6 <- update(f5, . ~ . + university_distance + waterfront_distance)
+# M4: Add education
+f4 <- update(f3, . ~ . + bachelors_or_higher)
 
-# Once the external data are joined and cleaned,
-# uncomment the model you want to test and log it.
-#
-# model_log <- bind_rows(
-#   model_log,
-#   log_model(
-#     "M1: Neighborhood income",
-#     f1,
-#     "Median household income",
-#     "Tests whether neighborhood income improves price prediction."
-#   )
-# )
-#
-# View the results after running models
-# model_log
-```
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M4: Add education",
+    f4,
+    "ACS bachelor's-degree count",
+    "Tests whether neighborhood education characteristics improve prediction."
+  )
+)
+
+# M5: Add rent
+f5 <- update(f4, . ~ . + median_gross_rent)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M5: Add median rent",
+    f5,
+    "Median gross rent",
+    "Tests whether neighborhood rental-market conditions improve prediction."
+  )
+)
+
+
+
+# Mx: Transit accessibility
+# fx <- update(fx, . ~ . + transit_distance)
+
+# Mx: Zoning and historical redlining
+# fx <- update(fx, . ~ . + zoning_type + redlining_grade)
+
+# Mx: Grocery stores and Whole Foods
+# fx <- update(fx, . ~ . + grocery_distance + whole_foods_distance)
+
+# Mx: Bars
+# fx <- update(fx, . ~ . + bar_count)
+
+# Mx: Universities and waterfront
+# fx <- update(fx, . ~ . + university_distance + waterfront_distance)
+
+
+# Compare all models so far
+model_log |>
+  arrange(cv_rmse)
 ```
 #LIST FO POSSIBLE PREDICTORS
 #income
