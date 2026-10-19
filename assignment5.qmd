@@ -1,7 +1,7 @@
 ---
 title: "Assignment 5: House Price Prediction, Chicago"
 subtitle: "MUSA 5080 · Team assignment"
-author: "Team fun! we love ppa!: Sophia Meyers, Gautami Kasat, Sara Cerami, Tegan Lochner"
+author: "Team ___: ___, ___, ___, ___"
 date: last-modified
 format:
   html:
@@ -148,24 +148,14 @@ Useful sources: the [Chicago Data Portal](https://data.cityofchicago.org) (find 
 
 Decide which training sales are market sales. Record each rule, why, and how many it removed. Then explore: at least four plots, including a map of price.
 
+#price<$1
+
 ```{r}
 #| label: part-1
+train <- all_sales %>%
+  filter(split == "train")
+glimpse(train)
 
-#fill na in features with 0
-all_sales <- all_sales |>
-  mutate(
-    num_bedrooms = replace_na(num_bedrooms, 0),
-    num_full_baths = replace_na(num_full_baths, 0),
-    num_half_baths = replace_na(num_half_baths, 0),
-    num_fireplaces = replace_na(num_fireplaces, 0),
-    garage_size = replace_na(garage_size, 0),
-    central_air = replace_na(central_air, 0),
-    one_story = replace_na(one_story, 0),
-    full_basement = replace_na(full_basement, 0),
-    finished_basement = replace_na(finished_basement, 0),
-    brick_stone_ext = replace_na(brick_stone_ext, 0),
-    warmairfurnace = replace_na(warmairfurnace, 0),
-  )
 
 ```
 
@@ -181,6 +171,7 @@ Start with a structure-only baseline. Then add features in steps you can learn f
 
 ```{r}
 #| label: part-2
+
 ```
 
 ---
