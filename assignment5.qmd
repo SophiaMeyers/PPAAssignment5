@@ -151,7 +151,7 @@ Decide which training sales are market sales. Record each rule, why, and how man
 ```{r}
 #| label: part-1
 
-#fill na in house features with 0
+#fill na in house features with 0: fireplace = n/a is the same as having 0 fireplaces. This makes the data easier to handle 
 all_sales <- all_sales |>
   mutate(
     num_bedrooms = replace_na(num_bedrooms, 0),
@@ -167,11 +167,11 @@ all_sales <- all_sales |>
     warmairfurnace = replace_na(warmairfurnace, 0),
   )
 
-# salesprice is equal to or less than 1
+# salesprice is equal to or less than 1: likely to be sales that did not go to market
 all_sales <- all_sales |>
   filter(sale_price > 1 | is.na(sale_price))
 
-# sales date must be between 2023 - 2025
+# sales date must be between 2023 - 2025: keep within the time frame
 all_sales <- all_sales |>
   mutate(
     sale_date = as.Date(sale_date, format = "%B %d, %Y")
