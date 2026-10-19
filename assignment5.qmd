@@ -282,7 +282,18 @@ Start with a structure-only baseline. Then add features in steps you can learn f
 ```{r}
 #| label: part-2
 
+
 ```
+
+#income
+#transit
+#zoning
+#red lining
+#proximity to x type of store (venture)
+#universities
+#proximity to waterfront
+#grocery store type (whole foods)
+#bars
 
 ---
 
