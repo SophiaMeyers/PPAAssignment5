@@ -186,6 +186,88 @@ all_sales <- all_sales |>
 
 ```
 
+```{r}
+#plot1: price map
+library(tidyverse)
+library(sf)
+
+# Keep training sales with valid sale prices and coordinates
+map_sales <- all_sales |>
+  filter(
+    split == "train",
+    !is.na(sale_price),
+    sale_price > 0,
+    !is.na(geometry)
+  ) |>
+  st_as_sf()
+
+# Map sale prices
+ggplot(map_sales) +
+  geom_sf(aes(color = sale_price), size = 0.1, alpha = 0.7) +
+  scale_color_distiller(
+    palette = "Spectral",
+    direction = 1,
+    trans = "log10",
+    labels = scales::label_dollar(),
+    name = "Sale Price"
+  ) +
+  labs(
+    title = "Geographic Distribution of Chicago House Sale Prices",
+    subtitle = "Training sales, 2023–2025"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#plot2: building age 
+ggplot(map_sales) +
+  geom_sf(aes(color = building_age), size = 0.1, alpha = 0.7) +
+  scale_color_distiller(
+    palette = "Spectral",
+    direction = 1,
+    labels = scales::label_number(suffix = " years"),
+    name = "Building Age"
+  ) +
+  labs(
+    title = "Geographic Distribution of Building Age in Chicago",
+    subtitle = "Training sales, 2023–2025"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#plot3: bedroom counts
+ggplot(map_sales) +
+  geom_sf(aes(color = num_bedrooms), size = 0.1, alpha = 0.7) +
+  scale_color_distiller(
+    palette = "Spectral",
+    direction = 1,
+    name = "Bedroom Count"
+  ) +
+  labs(
+    title = "Geographic Distribution of Bedroom Counts in Chicago",
+    subtitle = "Training sales, 2023–2025"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#plot4: central air 
+ggplot(map_sales) +
+  geom_sf(aes(color = building_000sf), size = 0.1, alpha = 0.7) +
+  scale_color_distiller(
+    palette = "Spectral",
+    direction = 1,
+    name = "Square Footage"
+  ) +
+  labs(
+    title = "Geographic Distribution of Square Footage in Chicago",
+    subtitle = "Training sales, 2023–2025"
+  ) +
+  theme_minimal()
+```
+
+
 **Answer:** What in your exploration shaped your modeling choices?
 
 *Your answer:*
