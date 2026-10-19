@@ -365,7 +365,7 @@ log_model <- function(name, formula, added, notes) {
 # model_log
 ```
 ```
-
+#LIST FO POSSIBLE PREDICTORS
 #income
 #transit
 #zoning
