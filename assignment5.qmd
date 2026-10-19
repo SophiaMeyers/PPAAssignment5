@@ -168,8 +168,22 @@ all_sales <- all_sales |>
   )
 
 # salesprice is equal to or less than 1
+all_sales <- all_sales |>
+  filter(sale_price > 1 | is.na(sale_price))
 
-#
+# sales date must be between 2023 - 2025
+all_sales <- all_sales |>
+  mutate(
+    sale_date = as.Date(sale_date, format = "%B %d, %Y")
+  ) |>
+  filter(
+    between(
+      sale_date,
+      as.Date("2023-01-01"),
+      as.Date("2025-12-31")
+    )
+  )
+
 ```
 
 **Answer:** What in your exploration shaped your modeling choices?
