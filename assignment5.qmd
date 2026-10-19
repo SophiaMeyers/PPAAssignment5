@@ -270,7 +270,8 @@ ggplot(map_sales) +
 
 **Answer:** What in your exploration shaped your modeling choices?
 
-*Your answer:*
+*Your answer:* 
+Building age appears to be strongly associated with price so we might look at historic district outlines. Both bedroom count and square footage apprear to be skewed by high outliers. We also can see that north of 41°N houses the most expensive neighborhoods and south of that we see the cheapest neighborhoods. This makes us want to inquiry about the neighborhoods themselves and maybe add in historical redlining districts.
 
 ---
 
