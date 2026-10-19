@@ -292,9 +292,9 @@ Building age appears to be strongly associated with price so we might look at hi
 Start with a structure-only baseline. Then add features in steps you can learn from, logging each one. Keep the log in a tibble with columns `model`, `added`, `cv_rmse`, `moran_i`, `notes`.
 
 ```{r}
-#Loading data
-#ACS (preliminary list ot be added to
-# ACS data for Chicago / Cook County
+#LOADING AND CLEANING ACS DATA
+
+#ACS (preliminary list, variables to be added/removed)
 acs_tracts <- tidycensus::get_acs(
   geography = "tract",
   variables = c(
@@ -345,7 +345,6 @@ all_sales <- sf::st_join(
   left = TRUE
 )
 
-
 # Fill missing ACS predictors using training medians (predicts so I dont have to drop rows)
 acs_vars <- c(
   "median_income",
@@ -380,7 +379,185 @@ train <- all_sales |>
   filter(split == "train")
 
 ```
+```{r}
+##LOADING AND CLEANING PARKS DATA
 
+
+##PARKS DATA
+# Read the parks CSV
+parks_raw <- readr::read_csv(
+  "data/CPD_Parks_20261019.csv",
+  show_col_types = FALSE,
+  col_types = readr::cols(
+    the_geom = readr::col_character(),
+    .default = readr::col_guess()
+  )
+)
+
+# Convert the WKT geometry column into an sf object
+parks <- sf::st_as_sf(
+  parks_raw,
+  wkt = "the_geom",
+  crs = 4326
+)
+
+# Keep useful fields and preserve the geometry
+parks <- parks |>
+  dplyr::select(
+    PARK,
+    ACRES,
+    geometry = dplyr::all_of(attr(sf::st_geometry(parks), "sf_column"))
+  ) |>
+  dplyr::mutate(
+    park_acres = readr::parse_number(as.character(ACRES))
+  ) |>
+  dplyr::select(
+    park_name = PARK,
+    park_acres
+  ) |>
+  sf::st_transform(3435)
+
+# Transform house locations to the same projected CRS
+all_sales <- sf::st_transform(all_sales, 3435)
+
+# Find the nearest park to each house
+nearest_park <- sf::st_nearest_feature(
+  all_sales,
+  parks
+)
+
+all_sales$park_distance_m <- as.numeric(
+  sf::st_distance(
+    all_sales,
+    parks[nearest_park, ],
+    by_element = TRUE
+  )
+)
+
+# Find parks within 500 meters of each house (can be changed)
+nearby_parks <- sf::st_is_within_distance(
+  all_sales,
+  parks,
+  dist = 500. #TO BE DISCUSSED
+)
+
+# Count nearby parks
+all_sales$nearby_park_count_500m <- lengths(nearby_parks)
+
+# Sum the acreage of parks within 500 meters
+all_sales$nearby_park_acres_500m <- vapply(
+  nearby_parks,
+  function(i) {
+    sum(parks$park_acres[i], na.rm = TRUE)
+  },
+  numeric(1)
+)
+
+# Check the new predictors
+summary(
+  sf::st_drop_geometry(all_sales)[
+    c(
+      "park_distance_m",
+      "nearby_park_count_500m",
+      "nearby_park_acres_500m"
+    )
+  ]
+)
+
+```
+```{r}
+##CTA RAIL STATIONS DATA LOADING AND CLEANING
+
+# Read the CTA rail station shapefile
+cta_stations <- sf::st_read(
+  "data/CTA_RailStations/CTA_RailStations.shp",
+  quiet = TRUE
+)
+
+# Inspect the data
+print(nrow(cta_stations))
+names(cta_stations)
+sf::st_crs(cta_stations)
+
+# Make sure both datasets use the same projected CRS
+cta_stations <- sf::st_transform(cta_stations, 3435)
+all_sales <- sf::st_transform(all_sales, 3435)
+
+# Distance to nearest CTA rail station
+nearest_station <- sf::st_nearest_feature(
+  all_sales,
+  cta_stations
+)
+
+all_sales$cta_distance_m <- as.numeric(
+  sf::st_distance(
+    all_sales,
+    cta_stations[nearest_station, ],
+    by_element = TRUE
+  )
+) * 0.3048
+
+# Count CTA stations within 800 meters (can change this)
+nearby_stations <- sf::st_is_within_distance(
+  all_sales,
+  cta_stations,
+  dist = 800 / 0.3048, ###TO BE DECIDED ON
+)
+
+all_sales$cta_stations_800m <- lengths(nearby_stations)
+
+# Check the results
+summary(all_sales$cta_distance_m)
+summary(all_sales$cta_stations_800m)
+
+```
+
+```{r}
+##METRA RAIL STATIONS DATA LOADING AND CLEANING
+
+# Read the metra rail station shapefile
+metra_stations <- sf::st_read(
+  "data/Metra_Stations/MetraStations.shp",
+  quiet = TRUE
+)
+
+# Inspect the data
+print(nrow(metra_stations))
+names(metra_stations)
+sf::st_crs(metra_stations)
+
+# Make sure both datasets use the same projected CRS
+metra_stations <- sf::st_transform(metra_stations, 3435)
+all_sales <- sf::st_transform(all_sales, 3435)
+
+# Distance to nearest metra rail station
+nearest_station <- sf::st_nearest_feature(
+  all_sales,
+  metra_stations
+)
+
+all_sales$metra_distance_m <- as.numeric(
+  sf::st_distance(
+    all_sales,
+    metra_stations[nearest_station, ],
+    by_element = TRUE
+  )
+) * 0.3048
+
+# Count metra stations within 800 meters (can change this)
+nearby_stations <- sf::st_is_within_distance(
+  all_sales,
+  metra_stations,
+  dist = 800 / 0.3048, ###TO BE DECIDED ON
+)
+
+all_sales$metra_stations_800m <- lengths(nearby_stations)
+
+# Check the results
+summary(all_sales$metra_distance_m)
+summary(all_sales$metra_stations_800m)
+
+```
 
 ```{r}
 #| label: part-2
@@ -486,12 +663,48 @@ model_log <- bind_rows(
 )
 
 
+# M6: Add Parks
+f6 <- update(f5, . ~ . +   park_distance_m +
+  nearby_park_acres_500m)
 
-# Mx: Transit accessibility
-# fx <- update(fx, . ~ . + transit_distance)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M6: Adds distance to parks",
+    f6,
+    "Distance to nearest park and park acreage within 500 m",
+    "Tests whether proximity to parks and nearby parkland improve prediction."
+  )
+)
 
-# Mx: Zoning and historical redlining
-# fx <- update(fx, . ~ . + zoning_type + redlining_grade)
+
+# M7: CTA rail stations800m
+f7 <- update(f6, . ~ . + cta_distance_m + 
+               cta_stations_800m)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M7: Adds distance to cta rail stations 800m",
+    f7,
+    "Distance to nearest CTA rail stations within 800 m",
+    "Tests whether proximity to cta rail stations improve prediction."
+  )
+)
+
+# M8: metra rail stations 800m
+f8 <- update(f7, . ~ . + metra_distance_m + 
+               metra_stations_800m)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M8: Adds distance to metra rail stations 800m",
+    f8,
+    "Distance to nearest metra rail stations within 800 m",
+    "Tests whether proximity to metra rail stations improve prediction."
+  )
+)
 
 # Mx: Grocery stores and Whole Foods
 # fx <- update(fx, . ~ . + grocery_distance + whole_foods_distance)
@@ -507,9 +720,8 @@ model_log <- bind_rows(
 model_log |>
   arrange(cv_rmse)
 ```
-#LIST FO POSSIBLE PREDICTORS
-#income
-#transit
+#TO BE ADDED
+# other transit
 #zoning
 #red lining
 #proximity to x type of store (venture)
@@ -517,6 +729,17 @@ model_log |>
 #proximity to waterfront
 #grocery store type (whole foods)
 #bars
+
+
+#ADDED
+#(ACS WITHIN CENSUS TRACT)
+#income 
+#Median age
+#population
+#bachelors or higher
+#Median rent
+#500m buffer to parks (counts both how many parks are within that buffer from the house and also has variable counting distance to closest park)
+# 800m buffer to CTA rail stations(counts both how many stations are within that buffer from the house and also has variable counting distance to closest station)
 
 ---
 
