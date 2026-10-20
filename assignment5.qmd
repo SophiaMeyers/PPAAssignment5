@@ -294,7 +294,7 @@ Start with a structure-only baseline. Then add features in steps you can learn f
 ```{r}
 #LOADING AND CLEANING ACS DATA
 
-#ACS (preliminary list, variables to be added/removed)
+# 1. Download ACS 2019–2023 5-year estimates
 acs_tracts <- tidycensus::get_acs(
   geography = "tract",
   variables = c(
@@ -306,7 +306,9 @@ acs_tracts <- tidycensus::get_acs(
     owner_occupied = "B25003_002",
     renter_occupied = "B25003_003",
     bachelors_or_higher = "B15003_022",
-    unemployment_rate = "E23025_005",
+    unemployed = "B23025_005",
+    labor_force = "B23025_003",
+    vacant = "B25002_003"
   ),
   state = "IL",
   county = "Cook",
@@ -324,31 +326,21 @@ acs_tracts <- tidycensus::get_acs(
     owner_occupied = owner_occupiedE,
     renter_occupied = renter_occupiedE,
     bachelors_or_higher = bachelors_or_higherE,
-    unemployment_rate = unemployment_rateE,
+    vacant = vacantE,
+    unemployment_rate = ifelse(
+      labor_forceE > 0,
+      100 * unemployedE / labor_forceE,
+      NA_real_
+    ),
     geometry
   ) |>
   sf::st_transform(3435)
 
-#Joining acs to houses 
-all_sales <- sf::st_join(
-  all_sales,
-  acs_tracts |>
-    select(
-      median_income,
-      median_age,
-      total_population,
-      median_gross_rent,
-      median_home_value,
-      owner_occupied,
-      renter_occupied,
-      bachelors_or_higher,
-      unemployment_rate
-    ),
-  join = sf::st_within,
-  left = TRUE
-)
+# Check ACS download
+print(nrow(acs_tracts))
 
-# Fill missing ACS predictors using training medians (predicts so I dont have to drop rows)
+
+# Define ACS predictor names
 acs_vars <- c(
   "median_income",
   "median_age",
@@ -358,25 +350,59 @@ acs_vars <- c(
   "owner_occupied",
   "renter_occupied",
   "bachelors_or_higher",
-  "unemployment_rate"
+  "unemployment_rate",
+  "vacant"
 )
 
+
+# 3. Start from sales data and remove old ACS columns
+all_sales <- all_sales |>
+  select(
+    -any_of(acs_vars),
+    -matches(
+      paste0(
+        "^(",
+        paste(acs_vars, collapse = "|"),
+        ")\\.(x|y)(\\.\\.\\.[0-9]+)?$"
+      )
+    )
+  )
+
+
+# Join ACS attributes to properties by location
+all_sales <- sf::st_join(
+  all_sales,
+  acs_tracts |>
+    select(all_of(acs_vars)),
+  join = sf::st_within,
+  left = TRUE
+)
+
+
+# Fill missing ACS values using training-set medians
 for (v in acs_vars) {
 
-  # Calculate the median using non-missing training values only
   train_values <- all_sales[[v]][
     all_sales$split == "train" &
       !is.na(all_sales[[v]])
   ]
 
+  # Stop if a variable has no usable training values
+  if (length(train_values) == 0) {
+    warning(
+      paste("No non-missing training values for", v)
+    )
+    next
+  }
+
   fill_value <- median(train_values, na.rm = TRUE)
 
-  # Apply that value to missing observations in both splits
   all_sales[[v]][is.na(all_sales[[v]])] <- fill_value
 }
 
-# Verify that no missing values remain in these ACS variables
-colSums(is.na(all_sales[, acs_vars]))
+
+print(colSums(is.na(all_sales[, acs_vars])))
+
 
 train <- all_sales |>
   filter(split == "train")
@@ -842,7 +868,7 @@ log_model <- function(name, formula, added, notes) {
     model = name,
     added = added,
     cv_rmse = cv_rmse(formula, train),
-    moran_i = moran_cv(formula, train),
+  #  moran_i = moran_cv(formula, train),
     notes = notes
   )
 }
@@ -1040,6 +1066,18 @@ model_log <- bind_rows(
     f17,
     "hold grade",
     "Tests whether redlining maps (HOLC) improve prediction."
+  )
+)
+
+#M18: Vacant homes
+f18 <- update(f17, . ~ . + vacant)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M18: vacant homes",
+    f18,
+    "vacant homes",
+    "Tests whether vacant homes improve prediction."
   )
 )
 
