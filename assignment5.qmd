@@ -452,7 +452,6 @@ all_sales$nearby_park_acres_500m <- vapply(
   numeric(1)
 )
 
-# Check the new predictors
 summary(
   sf::st_drop_geometry(all_sales)[
     c(
@@ -507,7 +506,7 @@ nearby_stations <- sf::st_is_within_distance(
 
 all_sales$cta_stations_800m <- lengths(nearby_stations)
 
-# Check the results
+
 summary(all_sales$cta_distance_m)
 summary(all_sales$cta_stations_800m)
 
@@ -556,7 +555,7 @@ nearby_stations <- sf::st_is_within_distance(
 
 all_sales$metra_stations_800m <- lengths(nearby_stations)
 
-# Check the results
+
 summary(all_sales$metra_distance_m)
 summary(all_sales$metra_stations_800m)
 
@@ -565,7 +564,7 @@ train <- all_sales |>
 
 ```
 ```{r}
-## School progress reports DATA LOADING AND CLEANING
+## SCHOOL PROGRESS REPORTS DATA LOADING AND CLEANING
 
 school_locations <- readr::read_csv(
   "data/Chicago_Public_Schools_-_School_Locations_SY2324_20261019.csv",
@@ -698,6 +697,43 @@ all_sales$nearby_school_attendance_1600m[
 ```
 ```{r}
 #LANDMARK DISTRICTS LOADING AND CLEANING DATA
+
+landmarks <- sf::st_read(
+  "data/LandmarkDistricts_nov2012/LandmarkDistricts_nov2012.shp",
+  quiet = TRUE
+)
+
+nrow(landmarks)
+names(landmarks)
+sf::st_geometry_type(landmarks)
+sf::st_crs(landmarks)
+
+landmarks <- sf::st_transform(landmarks, 3435)
+all_sales <- sf::st_transform(all_sales, 3435)
+
+
+#  whether each house intersects a landmark district
+inside_landmark <- lengths(
+  sf::st_intersects(all_sales, landmarks)
+) > 0
+
+all_sales$in_landmark_district <- as.integer(
+  inside_landmark
+)
+
+nearest_landmark <- sf::st_nearest_feature(
+  all_sales,
+  landmarks
+)
+
+all_sales$landmark_distance_m <- as.numeric(
+  sf::st_distance(
+    all_sales,
+    landmarks[nearest_landmark, ],
+    by_element = TRUE
+  )
+) * 0.3048
+
 
 
 ```
@@ -866,8 +902,20 @@ model_log <- bind_rows(
   )
 )
 
-# Mx: Bars
-# fx <- update(fx, . ~ . + bar_count)
+# M10: Landmark districts nearest and in or not in
+ f10 <- update(f9, . ~ . +   in_landmark_district +
+  landmark_distance_m)
+ 
+ model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M10: Landmark districts nearest and in or not in",
+    f10,
+    "Landmark districts nearest and in or not in",
+    "Tests whether proximity to landmark districts improve prediction."
+  )
+)
+ 
 
 # Mx: Universities and waterfront
 # fx <- update(fx, . ~ . + university_distance + waterfront_distance)
