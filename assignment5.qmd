@@ -374,7 +374,6 @@ for (v in acs_vars) {
 # Verify that no missing values remain in these ACS variables
 colSums(is.na(all_sales[, acs_vars]))
 
-# Refresh training data
 train <- all_sales |>
   filter(split == "train")
 
@@ -464,6 +463,9 @@ summary(
   ]
 )
 
+train <- all_sales |>
+  filter(split == "train")
+
 ```
 ```{r}
 ##CTA RAIL STATIONS DATA LOADING AND CLEANING
@@ -474,7 +476,6 @@ cta_stations <- sf::st_read(
   quiet = TRUE
 )
 
-# Inspect the data
 print(nrow(cta_stations))
 names(cta_stations)
 sf::st_crs(cta_stations)
@@ -510,6 +511,9 @@ all_sales$cta_stations_800m <- lengths(nearby_stations)
 summary(all_sales$cta_distance_m)
 summary(all_sales$cta_stations_800m)
 
+train <- all_sales |>
+  filter(split == "train")
+
 ```
 
 ```{r}
@@ -521,7 +525,6 @@ metra_stations <- sf::st_read(
   quiet = TRUE
 )
 
-# Inspect the data
 print(nrow(metra_stations))
 names(metra_stations)
 sf::st_crs(metra_stations)
@@ -557,7 +560,148 @@ all_sales$metra_stations_800m <- lengths(nearby_stations)
 summary(all_sales$metra_distance_m)
 summary(all_sales$metra_stations_800m)
 
+train <- all_sales |>
+  filter(split == "train")
+
 ```
+```{r}
+## School progress reports DATA LOADING AND CLEANING
+
+school_locations <- readr::read_csv(
+  "data/Chicago_Public_Schools_-_School_Locations_SY2324_20261019.csv",
+  show_col_types = FALSE
+)
+
+school_reports <- readr::read_csv(
+  "data/Chicago_Public_Schools_-_School_Progress_Reports_SY2425_20261019.csv",
+  show_col_types = FALSE
+)
+
+school_locations <- school_locations |>
+  mutate(School_ID = as.character(School_ID))
+
+school_reports <- school_reports |>
+  mutate(School_ID = as.character(School_ID))
+
+# Keep the most recent report for each school
+school_reports_latest <- school_reports |>
+  filter(!is.na(Progress_Report_Year)) |>
+  group_by(School_ID) |>
+  slice_max(
+    order_by = Progress_Report_Year,
+    n = 1,
+    with_ties = FALSE
+  ) |>
+  ungroup()
+
+# Join school reports to school locations (by school ID #)
+schools <- school_locations |>
+  left_join(
+    school_reports_latest |>
+      select(
+        School_ID,
+        Student_Growth_Rating,
+        Student_Attainment_Rating,
+        Culture_Climate_Rating,
+        Student_Attendance_Avg_Pct,
+        Graduation_4_Year_School_Pct_Year_2
+      ),
+    by = "School_ID"
+  )
+
+nrow(schools)
+names(schools)
+
+
+#Converting to spatial data
+schools <- schools |>
+  filter(
+    !is.na(Lat),
+    !is.na(Long)
+  ) |>
+  sf::st_as_sf(
+    coords = c("Long", "Lat"),
+    crs = 4326,
+    remove = FALSE
+  ) |>
+  sf::st_transform(3435)
+
+all_sales <- sf::st_transform(all_sales, 3435)
+
+#Calculate nearby schools (nearest feature rating)
+nearest_school <- sf::st_nearest_feature(
+  all_sales,
+  schools
+)
+
+all_sales$school_distance_m <- as.numeric(
+  sf::st_distance(
+    all_sales,
+    schools[nearest_school, ],
+    by_element = TRUE
+  )
+) * 0.3048
+
+summary(all_sales$school_distance_m)
+
+# Convert unavailable attendance values to NA
+schools <- schools |>
+  mutate(
+    Student_Attendance_Avg_Pct = as.numeric(
+      Student_Attendance_Avg_Pct
+    ),
+    Student_Attendance_Avg_Pct = if_else(
+      Student_Attendance_Avg_Pct < 0 |
+        Student_Attendance_Avg_Pct > 100,
+      NA_real_,
+      Student_Attendance_Avg_Pct
+    )
+  )
+nearby_schools <- sf::st_is_within_distance(
+  all_sales,
+  schools,
+  dist = 1600 / 0.3048
+)
+
+#Count of shcools within 1600M (CAN BE CHANGED)
+all_sales$nearby_school_count_1600m <- lengths(
+  nearby_schools
+)
+
+all_sales$nearby_school_attendance_1600m <- vapply(
+  nearby_schools,
+  function(i) {
+    values <- schools$Student_Attendance_Avg_Pct[i]
+
+    if (length(values) == 0 || all(is.na(values))) {
+      return(NA_real_)
+    }
+
+    mean(values, na.rm = TRUE)
+  },
+  numeric(1)
+)
+
+#fill missing values with training data
+train_rows <- all_sales$split == "train"
+
+attendance_median <- median(
+  all_sales$nearby_school_attendance_1600m[train_rows],
+  na.rm = TRUE
+)
+
+all_sales$nearby_school_attendance_1600m[
+  is.na(all_sales$nearby_school_attendance_1600m)
+] <- attendance_median
+
+
+```
+```{r}
+#LANDMARK DISTRICTS LOADING AND CLEANING DATA
+
+
+```
+
 
 ```{r}
 #| label: part-2
@@ -706,8 +850,21 @@ model_log <- bind_rows(
   )
 )
 
-# Mx: Grocery stores and Whole Foods
-# fx <- update(fx, . ~ . + grocery_distance + whole_foods_distance)
+#M9: School attendance, amount of schools within 1600m and nearest school
+f9 <- update(f8, . ~ . + school_distance_m +
+  nearby_school_count_1600m +
+  nearby_school_attendance_1600m   #COULD TRY TO ADD BINARY SCHOOLS WITH OR WITHOUT AWARDS
+)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M9: adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
+    f9,
+    "adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
+    "Tests whether proximity to schools and high attendance schools improve prediction."
+  )
+)
 
 # Mx: Bars
 # fx <- update(fx, . ~ . + bar_count)
@@ -721,6 +878,7 @@ model_log |>
   arrange(cv_rmse)
 ```
 #TO BE ADDED
+
 # other transit
 #zoning
 #red lining
@@ -731,15 +889,22 @@ model_log |>
 #bars
 
 
+
 #ADDED
+
 #(ACS WITHIN CENSUS TRACT)
+
 #income 
 #Median age
 #population
 #bachelors or higher
 #Median rent
+
+#Outside open data
+
 #500m buffer to parks (counts both how many parks are within that buffer from the house and also has variable counting distance to closest park)
 # 800m buffer to CTA rail stations(counts both how many stations are within that buffer from the house and also has variable counting distance to closest station)
+#amount of public schools within 1600m buffer, nearest public school, median attendance of schools within 1600m
 
 ---
 
