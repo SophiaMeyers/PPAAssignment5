@@ -737,6 +737,22 @@ all_sales$landmark_distance_m <- as.numeric(
 
 
 ```
+```{r}
+#REDLINING (MAPPING INEQUALITY) DATA LOADING AND CLEANING
+
+redlining <- sf::st_read(
+  "data/mappinginequality.gpkg",
+  quiet = TRUE
+)
+
+
+
+names(redlining)
+sf::st_crs(redlining)
+sf::st_bbox(redlining)
+sort(table(redlining$grade_field, useNA = "ifany"),
+     decreasing = TRUE)
+```
 
 
 ```{r}
@@ -925,6 +941,7 @@ model_log <- bind_rows(
 model_log |>
   arrange(cv_rmse)
 ```
+
 #TO BE ADDED
 
 # other transit
@@ -948,11 +965,12 @@ model_log |>
 #bachelors or higher
 #Median rent
 
-#Outside open data
+#Outside of acs open data
 
 #500m buffer to parks (counts both how many parks are within that buffer from the house and also has variable counting distance to closest park)
 # 800m buffer to CTA rail stations(counts both how many stations are within that buffer from the house and also has variable counting distance to closest station)
 #amount of public schools within 1600m buffer, nearest public school, median attendance of schools within 1600m
+#Binary in or outside of landmark district and distance to nearest landmark district
 
 ---
 
