@@ -745,13 +745,65 @@ redlining <- sf::st_read(
   quiet = TRUE
 )
 
-
-
 names(redlining)
 sf::st_crs(redlining)
 sf::st_bbox(redlining)
 sort(table(redlining$grade_field, useNA = "ifany"),
      decreasing = TRUE)
+
+chicago_redlining <- redlining |>
+  dplyr::filter(
+    stringr::str_detect(
+      stringr::str_to_lower(city),
+      "chicago"
+    ),
+    stringr::str_to_upper(state) %in% c("IL", "ILLINOIS")
+  )
+
+nrow(chicago_redlining)
+table(chicago_redlining$grade, useNA = "ifany")
+
+
+chicago_redlining <- sf::st_transform(chicago_redlining, 3435)
+all_sales <- sf::st_transform(all_sales, 3435)
+
+# which HOLC polygons each house intersects
+holc_matches <- sf::st_intersects(all_sales, chicago_redlining)
+
+# Assign the grade 
+all_sales$holc_grade <- vapply(
+  holc_matches,
+  function(i) {
+    if (length(i) == 0) {
+      return("Outside mapped area")
+    }
+
+    grades <- unique(
+      na.omit(chicago_redlining$grade[i])
+    )
+
+    if (length(grades) == 0) {
+      return("Unknown")
+    }
+
+    if (length(grades) > 1) {
+      return("Multiple grades")
+    }
+
+    as.character(grades[1])
+  },
+  character(1)
+)
+
+
+all_sales$holc_grade <- factor(all_sales$holc_grade)
+table(all_sales$holc_grade, useNA = "ifany")
+```
+
+```{r}
+#UNIVERSITY etc. EDGE BOUNDARY DATA LOADING AND CLEANING
+
+
 ```
 
 
@@ -933,9 +985,17 @@ model_log <- bind_rows(
 )
  
 
-# Mx: Universities and waterfront
-# fx <- update(fx, . ~ . + university_distance + waterfront_distance)
-
+# M11: HOLC Grade
+ f11 <- update(f10, . ~ . + holc_grade)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M11: holc grade",
+    f11,
+    "hold grade",
+    "Tests whether redlining maps (HOLC) improve prediction."
+  )
+)
 
 # Compare all models so far
 model_log |>
@@ -946,7 +1006,6 @@ model_log |>
 
 # other transit
 #zoning
-#red lining
 #proximity to x type of store (venture)
 #universities
 #proximity to waterfront
@@ -971,6 +1030,7 @@ model_log |>
 # 800m buffer to CTA rail stations(counts both how many stations are within that buffer from the house and also has variable counting distance to closest station)
 #amount of public schools within 1600m buffer, nearest public school, median attendance of schools within 1600m
 #Binary in or outside of landmark district and distance to nearest landmark district
+#HOLC redlining grades
 
 ---
 
