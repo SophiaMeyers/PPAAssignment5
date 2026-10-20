@@ -122,6 +122,33 @@ socrata_get <- function(dataset, where, select = NULL, limit = 200000) {
   if (inherits(resp, "error")) stop("Portal request failed. Open this URL in a browser to see why:\n", url)
   st_read(tmp, quiet = TRUE)
 }
+
+moran_cv <- function(formula, train, k = 8) {
+  model <- lm(formula, data = st_drop_geometry(train))
+  residuals <- residuals(model)
+  coords <- st_coordinates(
+    st_point_on_surface(train)
+  )
+  neighbors <- spdep::knearneigh(
+    coords,
+    k = k,
+    longlat = FALSE
+  )
+  neighbors_list <- spdep::knn2nb(neighbors)
+
+  weights <- spdep::nb2listw(
+    neighbors_list,
+    style = "W",
+    zero.policy = TRUE
+  )
+  result <- spdep::moran.test(
+    residuals,
+    weights,
+    zero.policy = TRUE
+  )
+  as.numeric(result$estimate[["Moran I statistic"]])
+}
+
 ```
 
 ### Load both files together (provided)
@@ -308,7 +335,11 @@ acs_tracts <- tidycensus::get_acs(
     bachelors_or_higher = "B15003_022",
     unemployed = "B23025_005",
     labor_force = "B23025_003",
-    vacant = "B25002_003"
+    vacant = "B25002_003",
+    median_realestate_taxes = "B25103_001",
+    below_poverty = "B17001_002",
+    valued_millionPLS = "B25075_001",
+    work_from_home = "B08301_021"
   ),
   state = "IL",
   county = "Cook",
@@ -327,6 +358,10 @@ acs_tracts <- tidycensus::get_acs(
     renter_occupied = renter_occupiedE,
     bachelors_or_higher = bachelors_or_higherE,
     vacant = vacantE,
+    median_realestate_taxes = median_realestate_taxesE,
+    below_poverty = below_povertyE,
+    valued_millionPLS = valued_millionPLSE,
+    work_from_home = work_from_homeE,
     unemployment_rate = ifelse(
       labor_forceE > 0,
       100 * unemployedE / labor_forceE,
@@ -351,7 +386,12 @@ acs_vars <- c(
   "renter_occupied",
   "bachelors_or_higher",
   "unemployment_rate",
-  "vacant"
+  "vacant",
+  "median_realestate_taxes",
+  "below_poverty",
+  "valued_millionPLS",
+  "work_from_home"
+  
 )
 
 
@@ -723,7 +763,8 @@ all_sales$nearby_school_attendance_1600m[
   is.na(all_sales$nearby_school_attendance_1600m)
 ] <- attendance_median
 
-
+train <- all_sales |>
+  filter(split == "train")
 ```
 ```{r}
 #LANDMARK DISTRICTS LOADING AND CLEANING DATA
@@ -764,7 +805,8 @@ all_sales$landmark_distance_m <- as.numeric(
   )
 ) * 0.3048
 
-
+train <- all_sales |>
+  filter(split == "train")
 
 ```
 ```{r}
@@ -828,12 +870,60 @@ all_sales$holc_grade <- vapply(
 
 all_sales$holc_grade <- factor(all_sales$holc_grade)
 table(all_sales$holc_grade, useNA = "ifany")
+
+train <- all_sales |>
+  filter(split == "train")
 ```
 
 ```{r}
 #UNIVERSITY etc. EDGE BOUNDARY DATA LOADING AND CLEANING
 
+postsecondary <- st_read(
+  "data/EDGE_GEOCODE_POSTSECONDARYSCH_2324.geojson"
+)
 
+postsecondary <- postsecondary |>
+  st_transform(st_crs(all_sales))
+
+
+#  postsecondary institutions in Illinois
+illinois_postsecondary <- postsecondary |>
+  filter(STATE == "IL")
+
+# Make sure both datasets use a projected CRS in meters
+sales_points_m <- st_transform(
+  st_point_on_surface(all_sales), 26916
+)
+
+schools_m <- st_transform(
+  illinois_postsecondary, 26916
+)
+
+# Distance to nearest postsecondary institution
+nearest_school <- st_nearest_feature(
+  sales_points_m, schools_m
+)
+
+all_sales$university_distance_m <- as.numeric(
+  st_distance(
+    sales_points_m,
+    schools_m[nearest_school, ],
+    by_element = TRUE
+  )
+)
+
+# Number of institutions within 1,600 meters
+nearby_universities <- st_is_within_distance(
+  sales_points_m,
+  schools_m,
+  dist = 1600
+)
+
+all_sales$universities_1600m <- lengths(nearby_universities)
+
+
+train <- all_sales |>
+  filter(split == "train")
 ```
 
 
@@ -868,7 +958,7 @@ log_model <- function(name, formula, added, notes) {
     model = name,
     added = added,
     cv_rmse = cv_rmse(formula, train),
-  #  moran_i = moran_cv(formula, train),
+    moran_i = moran_cv(formula, train),
     notes = notes
   )
 }
@@ -1081,6 +1171,66 @@ model_log <- bind_rows(
   )
 )
 
+#M19: median real estate taxes paid
+f19 <- update(f18, . ~ . + median_realestate_taxes)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M19: median real estate taxes paid",
+    f19,
+    "median real estate taxes paid",
+    "Tests whether median real estate taxes paid improve prediction."
+  )
+)
+
+#M20: population below poverty level
+f20 <- update(f19, . ~ . + below_poverty)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M20: population below poverty level",
+    f20,
+    "population below poverty level",
+    "Tests whether population below poverty level improve prediction."
+  )
+)
+
+#M21: valued million plus
+f21 <- update(f20, . ~ . + valued_millionPLS)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M21: units valued million plus",
+    f21,
+    "units valued million plus",
+    "Tests whether units valued million plus improve prediction."
+  )
+) 
+ 
+#M22: median work from home population
+f22 <- update(f21, . ~ . + work_from_home)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M22: median work from home population",
+    f22,
+    "median work from home population",
+    "Tests whether median work from home population prediction."
+  )
+) 
+ 
+#M23: distance to nearest university and amount within 1600m buffer
+f23 <- update(f22, . ~ . + university_distance_m + universities_1600m)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M23: distance to nearest university and amount within 1600m buffer",
+    f23,
+    "distance to nearest university and amount within 1600m buffer",
+    "Tests whether distance to nearest university and amount within 1600m buffer affects prediction."
+  )
+) 
+
 # Compare all models so far
 model_log |>
   arrange(model)
@@ -1118,6 +1268,11 @@ model_log |>
 #population
 #bachelors or higher
 #Median rent
+#Vacant units
+#median real estate taxes paid
+#population below poverty
+#work from home
+#med amount units valued 1million plus
 
 #Outside of acs open data
 
@@ -1126,6 +1281,7 @@ model_log |>
 #amount of public schools within 1600m buffer, nearest public school, median attendance of schools within 1600m
 #Binary in or outside of landmark district and distance to nearest landmark district
 #HOLC redlining grades
+#distance to closest university and the amount of universities within 1600m buffer
 
 ---
 
