@@ -305,7 +305,8 @@ acs_tracts <- tidycensus::get_acs(
     median_home_value = "B25077_001",
     owner_occupied = "B25003_002",
     renter_occupied = "B25003_003",
-    bachelors_or_higher = "B15003_022"
+    bachelors_or_higher = "B15003_022",
+    unemployment_rate = "E23025_005",
   ),
   state = "IL",
   county = "Cook",
@@ -323,6 +324,7 @@ acs_tracts <- tidycensus::get_acs(
     owner_occupied = owner_occupiedE,
     renter_occupied = renter_occupiedE,
     bachelors_or_higher = bachelors_or_higherE,
+    unemployment_rate = unemployment_rateE,
     geometry
   ) |>
   sf::st_transform(3435)
@@ -339,7 +341,8 @@ all_sales <- sf::st_join(
       median_home_value,
       owner_occupied,
       renter_occupied,
-      bachelors_or_higher
+      bachelors_or_higher,
+      unemployment_rate
     ),
   join = sf::st_within,
   left = TRUE
@@ -354,7 +357,8 @@ acs_vars <- c(
   "median_home_value",
   "owner_occupied",
   "renter_occupied",
-  "bachelors_or_higher"
+  "bachelors_or_higher",
+  "unemployment_rate"
 )
 
 for (v in acs_vars) {
@@ -851,20 +855,20 @@ f0 <- sale_price ~ building_000sf
 model_log <- bind_rows(
     model_log,
     log_model(
-      "M0:  building_000sf",
-     f1,
+      "M00:  building_000sf",
+     f0,
      "square footage",
      " square footage."
    )
  )
 
-# M1: Add building age
+# M01: Add building age
 f1 <- update(f0, . ~ . + building_age)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M1: Add building age",
+    "M01: Add building age",
     f1,
     "Building age",
     "Tests whether building age improves prediction."
@@ -872,26 +876,13 @@ model_log <- bind_rows(
 )
 
 
-# M5: Add central air
-f5 <- update(f4, . ~ . + central_air)
+# M06: Add one-story indicator
+f6 <- update(f1, . ~ . + one_story)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M5: Add central air",
-    f5,
-    "Central air",
-    "Tests whether central air improves prediction."
-  )
-)
-
-# M6: Add one-story indicator
-f6 <- update(f5, . ~ . + one_story)
-
-model_log <- bind_rows(
-  model_log,
-  log_model(
-    "M6: Add one-story indicator",
+    "M06: Add one-story indicator",
     f6,
     "One-story indicator",
     "Tests whether a one-story property indicator improves prediction."
@@ -901,25 +892,25 @@ model_log <- bind_rows(
 
 
 ##ACS VARIABLE
-# M7: Neighborhood income
-f7 <- update(f6, . ~ . + median_age)
+# M07: Neighborhood income
+f7 <- update(f6, . ~ . + median_income)
 model_log <- bind_rows(
    model_log,
    log_model(
-     "M7: Neighborhood income",
+     "M07: Neighborhood income",
      f7,
      "Median household income",
      "Tests whether neighborhood income improves price prediction."
    )
  )
 
-# M8: Add median age
+# M08: Add median age
 f8 <- update(f7, . ~ . + median_age)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M8: Add median age",
+    "M08: Add median age",
     f8,
     "Median household income + median age",
     "Tests whether neighborhood age patterns improve prediction."
@@ -932,7 +923,7 @@ f9 <- update(f8, . ~ . + total_population)
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M9: Add population",
+    "M09: Add population",
     f9,
     "Total population",
     "Tests whether neighborhood population adds predictive value."
@@ -1057,6 +1048,8 @@ model_log |>
   arrange(model)
 ```
 
+
+
 #TO BE ADDED
 
 # other transit
@@ -1077,7 +1070,7 @@ model_log |>
 #sq footage
 #building age
 #Full bathrooms ( REMOVE makes rmse go up)
-#central air
+#central air (REMOVE makes rmse go up)
 #warm air furnace (REMOVE makes rmse go up )
 
 #(ACS WITHIN CENSUS TRACT)
