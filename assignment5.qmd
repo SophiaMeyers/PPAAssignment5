@@ -122,6 +122,33 @@ socrata_get <- function(dataset, where, select = NULL, limit = 200000) {
   if (inherits(resp, "error")) stop("Portal request failed. Open this URL in a browser to see why:\n", url)
   st_read(tmp, quiet = TRUE)
 }
+
+moran_cv <- function(formula, train, k = 8) {
+  model <- lm(formula, data = st_drop_geometry(train))
+  residuals <- residuals(model)
+  coords <- st_coordinates(
+    st_point_on_surface(train)
+  )
+  neighbors <- spdep::knearneigh(
+    coords,
+    k = k,
+    longlat = FALSE
+  )
+  neighbors_list <- spdep::knn2nb(neighbors)
+
+  weights <- spdep::nb2listw(
+    neighbors_list,
+    style = "W",
+    zero.policy = TRUE
+  )
+  result <- spdep::moran.test(
+    residuals,
+    weights,
+    zero.policy = TRUE
+  )
+  as.numeric(result$estimate[["Moran I statistic"]])
+}
+
 ```
 
 ### Load both files together (provided)
@@ -294,7 +321,7 @@ Start with a structure-only baseline. Then add features in steps you can learn f
 ```{r}
 #LOADING AND CLEANING ACS DATA
 
-#ACS (preliminary list, variables to be added/removed)
+# 1. Download ACS 2019–2023 5-year estimates
 acs_tracts <- tidycensus::get_acs(
   geography = "tract",
   variables = c(
@@ -305,7 +332,14 @@ acs_tracts <- tidycensus::get_acs(
     median_home_value = "B25077_001",
     owner_occupied = "B25003_002",
     renter_occupied = "B25003_003",
-    bachelors_or_higher = "B15003_022"
+    bachelors_or_higher = "B15003_022",
+    unemployed = "B23025_005",
+    labor_force = "B23025_003",
+    vacant = "B25002_003",
+    median_realestate_taxes = "B25103_001",
+    below_poverty = "B17001_002",
+    valued_millionPLS = "B25075_001",
+    work_from_home = "B08301_021"
   ),
   state = "IL",
   county = "Cook",
@@ -323,29 +357,25 @@ acs_tracts <- tidycensus::get_acs(
     owner_occupied = owner_occupiedE,
     renter_occupied = renter_occupiedE,
     bachelors_or_higher = bachelors_or_higherE,
+    vacant = vacantE,
+    median_realestate_taxes = median_realestate_taxesE,
+    below_poverty = below_povertyE,
+    valued_millionPLS = valued_millionPLSE,
+    work_from_home = work_from_homeE,
+    unemployment_rate = ifelse(
+      labor_forceE > 0,
+      100 * unemployedE / labor_forceE,
+      NA_real_
+    ),
     geometry
   ) |>
   sf::st_transform(3435)
 
-#Joining acs to houses 
-all_sales <- sf::st_join(
-  all_sales,
-  acs_tracts |>
-    select(
-      median_income,
-      median_age,
-      total_population,
-      median_gross_rent,
-      median_home_value,
-      owner_occupied,
-      renter_occupied,
-      bachelors_or_higher
-    ),
-  join = sf::st_within,
-  left = TRUE
-)
+# Check ACS download
+print(nrow(acs_tracts))
 
-# Fill missing ACS predictors using training medians (predicts so I dont have to drop rows)
+
+# Define ACS predictor names
 acs_vars <- c(
   "median_income",
   "median_age",
@@ -354,25 +384,65 @@ acs_vars <- c(
   "median_home_value",
   "owner_occupied",
   "renter_occupied",
-  "bachelors_or_higher"
+  "bachelors_or_higher",
+  "unemployment_rate",
+  "vacant",
+  "median_realestate_taxes",
+  "below_poverty",
+  "valued_millionPLS",
+  "work_from_home"
+  
 )
 
+
+# 3. Start from sales data and remove old ACS columns
+all_sales <- all_sales |>
+  select(
+    -any_of(acs_vars),
+    -matches(
+      paste0(
+        "^(",
+        paste(acs_vars, collapse = "|"),
+        ")\\.(x|y)(\\.\\.\\.[0-9]+)?$"
+      )
+    )
+  )
+
+
+# Join ACS attributes to properties by location
+all_sales <- sf::st_join(
+  all_sales,
+  acs_tracts |>
+    select(all_of(acs_vars)),
+  join = sf::st_within,
+  left = TRUE
+)
+
+
+# Fill missing ACS values using training-set medians
 for (v in acs_vars) {
 
-  # Calculate the median using non-missing training values only
   train_values <- all_sales[[v]][
     all_sales$split == "train" &
       !is.na(all_sales[[v]])
   ]
 
+  # Stop if a variable has no usable training values
+  if (length(train_values) == 0) {
+    warning(
+      paste("No non-missing training values for", v)
+    )
+    next
+  }
+
   fill_value <- median(train_values, na.rm = TRUE)
 
-  # Apply that value to missing observations in both splits
   all_sales[[v]][is.na(all_sales[[v]])] <- fill_value
 }
 
-# Verify that no missing values remain in these ACS variables
-colSums(is.na(all_sales[, acs_vars]))
+
+print(colSums(is.na(all_sales[, acs_vars])))
+
 
 train <- all_sales |>
   filter(split == "train")
@@ -693,7 +763,8 @@ all_sales$nearby_school_attendance_1600m[
   is.na(all_sales$nearby_school_attendance_1600m)
 ] <- attendance_median
 
-
+train <- all_sales |>
+  filter(split == "train")
 ```
 ```{r}
 #LANDMARK DISTRICTS LOADING AND CLEANING DATA
@@ -734,7 +805,8 @@ all_sales$landmark_distance_m <- as.numeric(
   )
 ) * 0.3048
 
-
+train <- all_sales |>
+  filter(split == "train")
 
 ```
 ```{r}
@@ -798,12 +870,60 @@ all_sales$holc_grade <- vapply(
 
 all_sales$holc_grade <- factor(all_sales$holc_grade)
 table(all_sales$holc_grade, useNA = "ifany")
+
+train <- all_sales |>
+  filter(split == "train")
 ```
 
 ```{r}
 #UNIVERSITY etc. EDGE BOUNDARY DATA LOADING AND CLEANING
 
+postsecondary <- st_read(
+  "data/EDGE_GEOCODE_POSTSECONDARYSCH_2324.geojson"
+)
 
+postsecondary <- postsecondary |>
+  st_transform(st_crs(all_sales))
+
+
+#  postsecondary institutions in Illinois
+illinois_postsecondary <- postsecondary |>
+  filter(STATE == "IL")
+
+# Make sure both datasets use a projected CRS in meters
+sales_points_m <- st_transform(
+  st_point_on_surface(all_sales), 26916
+)
+
+schools_m <- st_transform(
+  illinois_postsecondary, 26916
+)
+
+# Distance to nearest postsecondary institution
+nearest_school <- st_nearest_feature(
+  sales_points_m, schools_m
+)
+
+all_sales$university_distance_m <- as.numeric(
+  st_distance(
+    sales_points_m,
+    schools_m[nearest_school, ],
+    by_element = TRUE
+  )
+)
+
+# Number of institutions within 1,600 meters
+nearby_universities <- st_is_within_distance(
+  sales_points_m,
+  schools_m,
+  dist = 1600
+)
+
+all_sales$universities_1600m <- lengths(nearby_universities)
+
+
+train <- all_sales |>
+  filter(split == "train")
 ```
 
 
@@ -845,117 +965,159 @@ log_model <- function(name, formula, added, notes) {
 
 ## TO BE ADDED TO MODEL
 
+#M0: baseline: square footage
+f0 <- sale_price ~ building_000sf
+
+model_log <- bind_rows(
+    model_log,
+    log_model(
+      "M00:  building_000sf",
+     f0,
+     "square footage",
+     " square footage."
+   )
+ )
+
+# M01: Add building age
+f1 <- update(f0, . ~ . + building_age)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M01: Add building age",
+    f1,
+    "Building age",
+    "Tests whether building age improves prediction."
+  )
+)
+
+
+# M06: Add one-story indicator
+f6 <- update(f1, . ~ . + one_story)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M06: Add one-story indicator",
+    f6,
+    "One-story indicator",
+    "Tests whether a one-story property indicator improves prediction."
+  )
+)
+
+
+
 ##ACS VARIABLE
-# M1: Neighborhood income
-f1 <- sale_price ~ median_income
+# M07: Neighborhood income
+f7 <- update(f6, . ~ . + median_income)
 model_log <- bind_rows(
    model_log,
    log_model(
-     "M1: Neighborhood income",
-     f1,
+     "M07: Neighborhood income",
+     f7,
      "Median household income",
      "Tests whether neighborhood income improves price prediction."
    )
  )
 
-# M2: Add median age
-f2 <- update(f1, . ~ . + median_age)
+# M08: Add median age
+f8 <- update(f7, . ~ . + median_age)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M2: Add median age",
-    f2,
+    "M08: Add median age",
+    f8,
     "Median household income + median age",
     "Tests whether neighborhood age patterns improve prediction."
   )
 )
 
-# M3: Add population
-f3 <- update(f2, . ~ . + total_population)
+# M9: Add population
+f9 <- update(f8, . ~ . + total_population)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M3: Add population",
-    f3,
+    "M09: Add population",
+    f9,
     "Total population",
     "Tests whether neighborhood population adds predictive value."
   )
 )
 
-# M4: Add education
-f4 <- update(f3, . ~ . + bachelors_or_higher)
+# M10: Add education
+f10 <- update(f9, . ~ . + bachelors_or_higher)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M4: Add education",
-    f4,
+    "M10: Add education",
+    f10,
     "ACS bachelor's-degree count",
     "Tests whether neighborhood education characteristics improve prediction."
   )
 )
 
-# M5: Add rent
-f5 <- update(f4, . ~ . + median_gross_rent)
+# M11: Add rent
+f11 <- update(f10, . ~ . + median_gross_rent)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M5: Add median rent",
-    f5,
+    "M11: Add median rent",
+    f11,
     "Median gross rent",
     "Tests whether neighborhood rental-market conditions improve prediction."
   )
 )
 
 
-# M6: Add Parks
-f6 <- update(f5, . ~ . +   park_distance_m +
+# M12: Add Parks
+f12 <- update(f11, . ~ . +   park_distance_m +
   nearby_park_acres_500m)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M6: Adds distance to parks",
-    f6,
+    "M12: Adds distance to parks",
+    f12,
     "Distance to nearest park and park acreage within 500 m",
     "Tests whether proximity to parks and nearby parkland improve prediction."
   )
 )
 
 
-# M7: CTA rail stations800m
-f7 <- update(f6, . ~ . + cta_distance_m + 
+# M13: CTA rail stations800m
+f13 <- update(f12, . ~ . + cta_distance_m +
                cta_stations_800m)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M7: Adds distance to cta rail stations 800m",
-    f7,
+    "M13: Adds distance to cta rail stations 800m",
+    f13,
     "Distance to nearest CTA rail stations within 800 m",
     "Tests whether proximity to cta rail stations improve prediction."
   )
 )
 
-# M8: metra rail stations 800m
-f8 <- update(f7, . ~ . + metra_distance_m + 
+# M14: metra rail stations 800m
+f14 <- update(f13, . ~ . + metra_distance_m +
                metra_stations_800m)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M8: Adds distance to metra rail stations 800m",
-    f8,
+    "M14: Adds distance to metra rail stations 800m",
+    f14,
     "Distance to nearest metra rail stations within 800 m",
     "Tests whether proximity to metra rail stations improve prediction."
   )
 )
 
-#M9: School attendance, amount of schools within 1600m and nearest school
-f9 <- update(f8, . ~ . + school_distance_m +
+#M15: School attendance, amount of schools within 1600m and nearest school
+f15 <- update(f14, . ~ . + school_distance_m +
   nearby_school_count_1600m +
   nearby_school_attendance_1600m   #COULD TRY TO ADD BINARY SCHOOLS WITH OR WITHOUT AWARDS
 )
@@ -963,44 +1125,118 @@ f9 <- update(f8, . ~ . + school_distance_m +
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M9: adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
-    f9,
+    "M15: adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
+    f15,
     "adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
     "Tests whether proximity to schools and high attendance schools improve prediction."
   )
 )
 
-# M10: Landmark districts nearest and in or not in
- f10 <- update(f9, . ~ . +   in_landmark_district +
+# M16: Landmark districts nearest and in or not in
+ f16 <- update(f15, . ~ . +   in_landmark_district +
   landmark_distance_m)
- 
+
  model_log <- bind_rows(
   model_log,
   log_model(
-    "M10: Landmark districts nearest and in or not in",
-    f10,
+    "M16: Landmark districts nearest and in or not in",
+    f16,
     "Landmark districts nearest and in or not in",
     "Tests whether proximity to landmark districts improve prediction."
   )
 )
- 
 
-# M11: HOLC Grade
- f11 <- update(f10, . ~ . + holc_grade)
+
+# M17: HOLC Grade
+ f17 <- update(f16, . ~ . + holc_grade)
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M11: holc grade",
-    f11,
+    "M17: holc grade",
+    f17,
     "hold grade",
     "Tests whether redlining maps (HOLC) improve prediction."
   )
 )
 
+#M18: Vacant homes
+f18 <- update(f17, . ~ . + vacant)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M18: vacant homes",
+    f18,
+    "vacant homes",
+    "Tests whether vacant homes improve prediction."
+  )
+)
+
+#M19: median real estate taxes paid
+f19 <- update(f18, . ~ . + median_realestate_taxes)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M19: median real estate taxes paid",
+    f19,
+    "median real estate taxes paid",
+    "Tests whether median real estate taxes paid improve prediction."
+  )
+)
+
+#M20: population below poverty level
+f20 <- update(f19, . ~ . + below_poverty)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M20: population below poverty level",
+    f20,
+    "population below poverty level",
+    "Tests whether population below poverty level improve prediction."
+  )
+)
+
+#M21: valued million plus
+f21 <- update(f20, . ~ . + valued_millionPLS)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M21: units valued million plus",
+    f21,
+    "units valued million plus",
+    "Tests whether units valued million plus improve prediction."
+  )
+) 
+ 
+#M22: median work from home population
+f22 <- update(f21, . ~ . + work_from_home)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M22: median work from home population",
+    f22,
+    "median work from home population",
+    "Tests whether median work from home population prediction."
+  )
+) 
+ 
+#M23: distance to nearest university and amount within 1600m buffer
+f23 <- update(f22, . ~ . + university_distance_m + universities_1600m)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M23: distance to nearest university and amount within 1600m buffer",
+    f23,
+    "distance to nearest university and amount within 1600m buffer",
+    "Tests whether distance to nearest university and amount within 1600m buffer affects prediction."
+  )
+) 
+
 # Compare all models so far
 model_log |>
-  arrange(cv_rmse)
+  arrange(model)
 ```
+
+
 
 #TO BE ADDED
 
@@ -1016,6 +1252,15 @@ model_log |>
 
 #ADDED
 
+#From all_sales
+
+#num bedrooms (REMOVED: made rmse go up)
+#sq footage
+#building age
+#Full bathrooms ( REMOVE makes rmse go up)
+#central air (REMOVE makes rmse go up)
+#warm air furnace (REMOVE makes rmse go up )
+
 #(ACS WITHIN CENSUS TRACT)
 
 #income 
@@ -1023,6 +1268,11 @@ model_log |>
 #population
 #bachelors or higher
 #Median rent
+#Vacant units
+#median real estate taxes paid
+#population below poverty
+#work from home
+#med amount units valued 1million plus
 
 #Outside of acs open data
 
@@ -1031,6 +1281,7 @@ model_log |>
 #amount of public schools within 1600m buffer, nearest public school, median attendance of schools within 1600m
 #Binary in or outside of landmark district and distance to nearest landmark district
 #HOLC redlining grades
+#distance to closest university and the amount of universities within 1600m buffer
 
 ---
 
