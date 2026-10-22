@@ -10,59 +10,86 @@ format:
 execute:
   warning: false
   message: false
+editor: 
+  markdown: 
+    wrap: 72
 ---
 
 ## The assignment
 
-In class we built a house price model for Philadelphia. Now your team does it for a city you haven't modeled: **Chicago**.
+In class we built a house price model for Philadelphia. Now your team
+does it for a city you haven't modeled: **Chicago**.
 
-The Cook County Assessor's Office has to value every home in the county, including the vast majority that didn't sell this year. Assessments drive property tax bills. When they're wrong in a systematic way, some households pay more than their share. A 2017 *Chicago Tribune* investigation, "The Tax Divide," found exactly that in Cook County: lower-value homes were assessed at higher shares of their worth than expensive ones.
+The Cook County Assessor's Office has to value every home in the county,
+including the vast majority that didn't sell this year. Assessments
+drive property tax bills. When they're wrong in a systematic way, some
+households pay more than their share. A 2017 *Chicago Tribune*
+investigation, "The Tax Divide," found exactly that in Cook County:
+lower-value homes were assessed at higher shares of their worth than
+expensive ones.
 
-Build a model that predicts **single-family sale prices in Chicago, 2023–2025**, using only the tools from this course. The file contains **only features of the house itself**. Everything about location is yours to build.
+Build a model that predicts **single-family sale prices in Chicago,
+2023–2025**, using only the tools from this course. The file contains
+**only features of the house itself**. Everything about location is
+yours to build.
 
 ### A real test
 
 | File | What's in it |
-|---|---|
+|------------------------------------|------------------------------------|
 | `chicago_train.csv` | About 80% of the houses, **with** sale prices |
 | `chicago_test.csv` | The other 20%, **without** sale prices. You predict them; we score you. |
 
-The test houses were held out by house, not by sale, so a house that sold twice is entirely on one side. Your CV RMSE is your estimate. Your test RMSE is the truth. **If they're far apart, something leaked.** 
+The test houses were held out by house, not by sale, so a house that
+sold twice is entirely on one side. Your CV RMSE is your estimate. Your
+test RMSE is the truth. **If they're far apart, something leaked.**
 
-**Due:** Friday, October 30. All teammates renders the file on their portfolio and every member submits that link on Canvas. One teammate uploads `team_XX_predictions.csv`.
+**Due:** Friday, October 30. All teammates renders the file on their
+portfolio and every member submits that link on Canvas. One teammate
+uploads `team_XX_predictions.csv`.
 
-**Individual accountability:** Q7 on October 30 asks each of you about *this* model: which features you used and why, your CV and test RMSE, and where the model fails worst. Make sure everyone can explain all of it.
+**Individual accountability:** Q7 on October 30 asks each of you about
+*this* model: which features you used and why, your CV and test RMSE,
+and where the model fails worst. Make sure everyone can explain all of
+it.
 
 ### Rules
 
-::: {.callout-important}
+::: callout-important
 ## 1. Clean training rows once, in Part 1. Never drop test rows.
-You must predict every test house, so fill NAs in a feature rather than filtering.
+
+You must predict every test house, so fill NAs in a feature rather than
+filtering.
 
 ## 2. Stay inside the time window
+
 Open data from 2023–2025 only.
 
 ## 3. No leakage
-Nothing built from sale prices. *Would the Assessor have this number for a house that didn't sell?*
+
+Nothing built from sale prices. *Would the Assessor have this number for
+a house that didn't sell?*
 
 ## 4. The outcome stays in dollars
+
 Transform predictors, not `sale_price`.
 
 ## 5. No prices from the test fold or the future
-No features built from other houses' sale prices. 
+
+No features built from other houses' sale prices.
 :::
 
 ### Please include in your final rendered qmd for this assignment:
 
-| | |
-|---|---|
+|  |  |
+|------------------------------------|------------------------------------|
 | **Model log** | Every model you tried, in order, with CV RMSE and Moran's I. Each row has a note saying why you tried it. |
-| **Features** | Incorporate the feature engineering tricks - including the spatial ones covered these past few weeks. 
+| **Features** | Incorporate the feature engineering tricks - including the spatial ones covered these past few weeks. |
 | **Diagnostics** | Residual maps for your baseline and final model, and what changed. |
 | **Error analysis** | Where your final model fails worst, and whose homes it over-values (Part 4). |
-| **Reasoning** | Choices justified by evidence from your own analysis.
+| **Reasoning** | Choices justified by evidence from your own analysis. |
 
----
+------------------------------------------------------------------------
 
 ## Part 0: Setup (provided)
 
@@ -153,7 +180,8 @@ moran_cv <- function(formula, train, k = 8) {
 
 ### Load both files together (provided)
 
-Build every feature on `all_sales`, so training and test houses get identical features. Split off `train` again whenever you add something.
+Build every feature on `all_sales`, so training and test houses get
+identical features. Split off `train` again whenever you add something.
 
 ```{r}
 #| label: load
@@ -167,13 +195,19 @@ all_sales <- bind_rows(
 all_sales %>% st_drop_geometry() %>% count(split)
 ```
 
-Useful sources: the [Chicago Data Portal](https://data.cityofchicago.org) (find a dataset's ID under its API button), the Census via `tidycensus`, and Cook County's open data.
+Useful sources: the [Chicago Data
+Portal](https://data.cityofchicago.org) (find a dataset's ID under its
+API button), the Census via `tidycensus`, and Cook County's open data.
 
----
+------------------------------------------------------------------------
 
 ## Part 1: Clean and explore
 
-Decide which training sales are market sales. Record each rule, why, and how many it removed. Then explore: at least four plots, including a map of price.
+Decide which training sales are market sales. Record each rule, why, and
+how many it removed. Then explore: at least four plots, including a map
+of price.
+
+### Clean the data
 
 ```{r}
 #| label: part-1
@@ -193,12 +227,21 @@ all_sales <- all_sales |>
     brick_stone_ext = replace_na(brick_stone_ext, 0),
     warmairfurnace = replace_na(warmairfurnace, 0)
   )
+```
 
-# salesprice is equal to or less than 1: likely to be sales that did not go to market
+### Rule 1: sales price is equal to or less than 1, likely to be sales that did not go to market
+
+```{r}
+# sales price is equal to or less than 1, likely to be sales that did not go to market
 all_sales <- all_sales |>
   mutate(
     sale_date = as.Date(sale_date, format = "%B %d, %Y")
   )
+```
+
+### Rule 2: sales date must be between 2023 - 2025: keep within the time frame
+
+```{r}
 # sales date must be between 2023 - 2025: keep within the time frame
 train_clean <- all_sales |>
   filter(
@@ -212,7 +255,11 @@ train_clean <- all_sales |>
       as.Date("2025-12-31")
     )
   )
+```
 
+### Finalize data set
+
+```{r}
 # Keep test rows
 test_clean <- all_sales |>
   filter(split == "test")
@@ -225,11 +272,9 @@ all_sales |> count(split)
 
 ```
 
-```{r}
-#plot1: price map
-library(tidyverse)
-library(sf)
+### Plot 1: price map
 
+```{r}
 # Keep training sales with valid sale prices and coordinates
 map_sales <- all_sales |>
   filter(
@@ -257,8 +302,9 @@ ggplot(map_sales) +
   theme_minimal()
 ```
 
+### Plot 2: building age
+
 ```{r}
-#plot2: building age 
 ggplot(map_sales) +
   geom_sf(aes(color = building_age), size = 0.1, alpha = 0.7) +
   scale_color_distiller(
@@ -274,8 +320,9 @@ ggplot(map_sales) +
   theme_minimal()
 ```
 
+### Plot 3: bedroom counts
+
 ```{r}
-#plot3: bedroom counts
 ggplot(map_sales) +
   geom_sf(aes(color = num_bedrooms), size = 0.1, alpha = 0.7) +
   scale_color_distiller(
@@ -290,8 +337,9 @@ ggplot(map_sales) +
   theme_minimal()
 ```
 
+### Plot 4: central air
+
 ```{r}
-#plot4: central air 
 ggplot(map_sales) +
   geom_sf(aes(color = building_000sf), size = 0.1, alpha = 0.7) +
   scale_color_distiller(
@@ -306,21 +354,27 @@ ggplot(map_sales) +
   theme_minimal()
 ```
 
-
 **Answer:** What in your exploration shaped your modeling choices?
 
-*Your answer:* 
-Building age appears to be strongly associated with price so we might look at historic district outlines. Both bedroom count and square footage apprear to be skewed by high outliers. We also can see that north of 41°N houses the most expensive neighborhoods and south of that we see the cheapest neighborhoods. This makes us want to inquiry about the neighborhoods themselves and maybe add in historical redlining districts.
+*Your answer:* Building age appears to be strongly associated with price
+so we might look at historic district outlines. Both bedroom count and
+square footage apprear to be skewed by high outliers. We also can see
+that north of 41°N houses the most expensive neighborhoods and south of
+that we see the cheapest neighborhoods. This makes us want to inquiry
+about the neighborhoods themselves and maybe add in historical redlining
+districts.
 
----
+------------------------------------------------------------------------
 
 ## Part 2: Build the model
 
-Start with a structure-only baseline. Then add features in steps you can learn from, logging each one. Keep the log in a tibble with columns `model`, `added`, `cv_rmse`, `moran_i`, `notes`.
+Start with a structure-only baseline. Then add features in steps you can
+learn from, logging each one. Keep the log in a tibble with columns
+`model`, `added`, `cv_rmse`, `moran_i`, `notes`.
+
+### LOADING AND CLEANING ACS DATA
 
 ```{r}
-#LOADING AND CLEANING ACS DATA
-
 # 1. Download ACS 2019–2023 5-year estimates
 acs_tracts <- tidycensus::get_acs(
   geography = "tract",
@@ -448,10 +502,10 @@ train <- all_sales |>
   filter(split == "train")
 
 ```
+
+### PARKS DATA LOADING AND CLEANING
+
 ```{r}
-##LOADING AND CLEANING PARKS DATA
-
-
 ##PARKS DATA
 # Read the parks CSV
 parks_raw <- readr::read_csv(
@@ -536,9 +590,10 @@ train <- all_sales |>
   filter(split == "train")
 
 ```
-```{r}
-##CTA RAIL STATIONS DATA LOADING AND CLEANING
 
+### CTA RAIL STATIONS DATA LOADING AND CLEANING
+
+```{r}
 # Read the CTA rail station shapefile
 cta_stations <- sf::st_read(
   "data/CTA_RailStations/CTA_RailStations.shp",
@@ -585,9 +640,9 @@ train <- all_sales |>
 
 ```
 
-```{r}
-##METRA RAIL STATIONS DATA LOADING AND CLEANING
+### METRA RAIL STATIONS DATA LOADING AND CLEANING
 
+```{r}
 # Read the metra rail station shapefile
 metra_stations <- sf::st_read(
   "data/Metra_Stations/MetraStations.shp",
@@ -633,9 +688,10 @@ train <- all_sales |>
   filter(split == "train")
 
 ```
-```{r}
-## SCHOOL PROGRESS REPORTS DATA LOADING AND CLEANING
 
+### SCHOOL PROGRESS REPORTS DATA LOADING AND CLEANING
+
+```{r}
 school_locations <- readr::read_csv(
   "data/Chicago_Public_Schools_-_School_Locations_SY2324_20261019.csv",
   show_col_types = FALSE
@@ -766,9 +822,10 @@ all_sales$nearby_school_attendance_1600m[
 train <- all_sales |>
   filter(split == "train")
 ```
-```{r}
-#LANDMARK DISTRICTS LOADING AND CLEANING DATA
 
+### LANDMARK DISTRICTS LOADING AND CLEANING DATA
+
+```{r}
 landmarks <- sf::st_read(
   "data/LandmarkDistricts_nov2012/LandmarkDistricts_nov2012.shp",
   quiet = TRUE
@@ -809,9 +866,10 @@ train <- all_sales |>
   filter(split == "train")
 
 ```
-```{r}
-#REDLINING (MAPPING INEQUALITY) DATA LOADING AND CLEANING
 
+### REDLINING (MAPPING INEQUALITY) DATA LOADING AND CLEANING
+
+```{r}
 redlining <- sf::st_read(
   "data/mappinginequality.gpkg",
   quiet = TRUE
@@ -875,9 +933,9 @@ train <- all_sales |>
   filter(split == "train")
 ```
 
-```{r}
-#UNIVERSITY etc. EDGE BOUNDARY DATA LOADING AND CLEANING
+### UNIVERSITY etc. EDGE BOUNDARY DATA LOADING AND CLEANING
 
+```{r}
 postsecondary <- st_read(
   "data/EDGE_GEOCODE_POSTSECONDARYSCH_2324.geojson"
 )
@@ -926,6 +984,7 @@ train <- all_sales |>
   filter(split == "train")
 ```
 
+### Baseline model
 
 ```{r}
 #| label: part-2
@@ -963,84 +1022,135 @@ log_model <- function(name, formula, added, notes) {
   )
 }
 
-## TO BE ADDED TO MODEL
-
-#M0: baseline: square footage
-f0 <- sale_price ~ building_000sf
+#M00: baseline: square footage
+f00 <- sale_price ~ building_000sf
 
 model_log <- bind_rows(
     model_log,
     log_model(
       "M00:  building_000sf",
-     f0,
+     f00,
      "square footage",
      " square footage."
    )
  )
 
 # M01: Add building age
-f1 <- update(f0, . ~ . + building_age)
+f01 <- update(f00, . ~ . + building_age)
 
 model_log <- bind_rows(
   model_log,
   log_model(
     "M01: Add building age",
-    f1,
+    f01,
     "Building age",
     "Tests whether building age improves prediction."
   )
 )
 
+# M2: Add number of bedrooms
+f02 <- update(f01, . ~ . + num_bedrooms)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M02: Add number of bedrooms",
+    f02,
+    "Number of bedrooms",
+    "Tests whether number of bedrooms improves prediction."
+  )
+)
+
+# M03: Add number of full baths
+f03 <- update(f02, . ~ . + num_full_baths)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M03: Add number of full baths",
+    f02,
+    "Number of full baths",
+    "Tests whether number of full baths improves prediction."
+  )
+)
+
+# M04: Add central air
+f04 <- update(f03, . ~ . + central_air)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M04: Add central air",
+    f04,
+    "Central air",
+    "Tests whether central air improves prediction."
+  )
+)
+
+# M05: Add warm air furnace
+f05 <- update(f04, . ~ . + warmairfurnace)
+
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M05: Add warm air furnace",
+    f05,
+    "Warm air furnace",
+    "Tests whether warm air furnace improves prediction."
+  )
+)
 
 # M06: Add one-story indicator
-f6 <- update(f1, . ~ . + one_story)
+f06 <- update(f05, . ~ . + one_story)
 
 model_log <- bind_rows(
   model_log,
   log_model(
     "M06: Add one-story indicator",
-    f6,
+    f06,
     "One-story indicator",
     "Tests whether a one-story property indicator improves prediction."
   )
 )
 
+```
 
+### ACS VARIABLES
 
-##ACS VARIABLE
+```{r}
 # M07: Neighborhood income
-f7 <- update(f6, . ~ . + median_income)
+f07 <- update(f06, . ~ . + median_income)
 model_log <- bind_rows(
    model_log,
    log_model(
      "M07: Neighborhood income",
-     f7,
+     f07,
      "Median household income",
      "Tests whether neighborhood income improves price prediction."
    )
  )
 
 # M08: Add median age
-f8 <- update(f7, . ~ . + median_age)
+f08 <- update(f07, . ~ . + median_age)
 
 model_log <- bind_rows(
   model_log,
   log_model(
     "M08: Add median age",
-    f8,
+    f08,
     "Median household income + median age",
     "Tests whether neighborhood age patterns improve prediction."
   )
 )
 
 # M9: Add population
-f9 <- update(f8, . ~ . + total_population)
+f09 <- update(f08, . ~ . + total_population)
 
 model_log <- bind_rows(
   model_log,
   log_model(
     "M09: Add population",
-    f9,
+    f09,
     "Total population",
     "Tests whether neighborhood population adds predictive value."
   )
@@ -1072,52 +1182,115 @@ model_log <- bind_rows(
   )
 )
 
+#M12: median real estate taxes paid
+f12 <- update(f11, . ~ . + median_realestate_taxes)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M12: median real estate taxes paid",
+    f11,
+    "median real estate taxes paid",
+    "Tests whether median real estate taxes paid improve prediction."
+  )
+)
 
-# M12: Add Parks
-f12 <- update(f11, . ~ . +   park_distance_m +
+#M13: population below poverty level
+f13 <- update(f12, . ~ . + below_poverty)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M13: population below poverty level",
+    f13,
+    "population below poverty level",
+    "Tests whether population below poverty level improve prediction."
+  )
+)
+
+#M14: valued million plus
+f14 <- update(f13, . ~ . + valued_millionPLS)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M14: units valued million plus",
+    f14,
+    "units valued million plus",
+    "Tests whether units valued million plus improve prediction."
+  )
+) 
+
+#M15: median work from home population
+f15 <- update(f14, . ~ . + work_from_home)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M15: median work from home population",
+    f15,
+    "median work from home population",
+    "Tests whether median work from home population prediction."
+  )
+) 
+
+#M16: Vacant homes
+f16 <- update(f15, . ~ . + vacant)
+model_log <- bind_rows(
+  model_log,
+  log_model(
+    "M16: vacant homes",
+    f16,
+    "vacant homes",
+    "Tests whether vacant homes improve prediction."
+  )
+)
+```
+
+### SPATIAL VARIABLES
+
+```{r}
+# M17: Add Parks
+f17 <- update(f16, . ~ . +   park_distance_m +
   nearby_park_acres_500m)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M12: Adds distance to parks",
-    f12,
+    "M17: Adds distance to parks",
+    f17,
     "Distance to nearest park and park acreage within 500 m",
     "Tests whether proximity to parks and nearby parkland improve prediction."
   )
 )
 
 
-# M13: CTA rail stations800m
-f13 <- update(f12, . ~ . + cta_distance_m +
+# M18: CTA rail stations800m
+f18 <- update(f17, . ~ . + cta_distance_m +
                cta_stations_800m)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M13: Adds distance to cta rail stations 800m",
-    f13,
+    "M18: Adds distance to cta rail stations 800m",
+    f18,
     "Distance to nearest CTA rail stations within 800 m",
     "Tests whether proximity to cta rail stations improve prediction."
   )
 )
 
-# M14: metra rail stations 800m
-f14 <- update(f13, . ~ . + metra_distance_m +
+# M19: metra rail stations 800m
+f19 <- update(f18, . ~ . + metra_distance_m +
                metra_stations_800m)
 
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M14: Adds distance to metra rail stations 800m",
-    f14,
+    "M19: Adds distance to metra rail stations 800m",
+    f19,
     "Distance to nearest metra rail stations within 800 m",
     "Tests whether proximity to metra rail stations improve prediction."
   )
 )
 
-#M15: School attendance, amount of schools within 1600m and nearest school
-f15 <- update(f14, . ~ . + school_distance_m +
+#M20: School attendance, amount of schools within 1600m and nearest school
+f20 <- update(f19, . ~ . + school_distance_m +
   nearby_school_count_1600m +
   nearby_school_attendance_1600m   #COULD TRY TO ADD BINARY SCHOOLS WITH OR WITHOUT AWARDS
 )
@@ -1125,100 +1298,40 @@ f15 <- update(f14, . ~ . + school_distance_m +
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M15: adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
-    f15,
+    "M20: adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
+    f20,
     "adda school attendance within 1600m, amount of shcools within 1600m, and closest school",
     "Tests whether proximity to schools and high attendance schools improve prediction."
   )
 )
 
-# M16: Landmark districts nearest and in or not in
- f16 <- update(f15, . ~ . +   in_landmark_district +
+# M21: Landmark districts nearest and in or not in
+ f21 <- update(f20, . ~ . +   in_landmark_district +
   landmark_distance_m)
 
  model_log <- bind_rows(
   model_log,
   log_model(
-    "M16: Landmark districts nearest and in or not in",
-    f16,
+    "M21: Landmark districts nearest and in or not in",
+    f21,
     "Landmark districts nearest and in or not in",
     "Tests whether proximity to landmark districts improve prediction."
   )
 )
 
 
-# M17: HOLC Grade
- f17 <- update(f16, . ~ . + holc_grade)
+# M22: HOLC Grade
+ f22 <- update(f21, . ~ . + holc_grade)
 model_log <- bind_rows(
   model_log,
   log_model(
-    "M17: holc grade",
-    f17,
+    "M22: holc grade",
+    f22,
     "hold grade",
     "Tests whether redlining maps (HOLC) improve prediction."
   )
 )
 
-#M18: Vacant homes
-f18 <- update(f17, . ~ . + vacant)
-model_log <- bind_rows(
-  model_log,
-  log_model(
-    "M18: vacant homes",
-    f18,
-    "vacant homes",
-    "Tests whether vacant homes improve prediction."
-  )
-)
-
-#M19: median real estate taxes paid
-f19 <- update(f18, . ~ . + median_realestate_taxes)
-model_log <- bind_rows(
-  model_log,
-  log_model(
-    "M19: median real estate taxes paid",
-    f19,
-    "median real estate taxes paid",
-    "Tests whether median real estate taxes paid improve prediction."
-  )
-)
-
-#M20: population below poverty level
-f20 <- update(f19, . ~ . + below_poverty)
-model_log <- bind_rows(
-  model_log,
-  log_model(
-    "M20: population below poverty level",
-    f20,
-    "population below poverty level",
-    "Tests whether population below poverty level improve prediction."
-  )
-)
-
-#M21: valued million plus
-f21 <- update(f20, . ~ . + valued_millionPLS)
-model_log <- bind_rows(
-  model_log,
-  log_model(
-    "M21: units valued million plus",
-    f21,
-    "units valued million plus",
-    "Tests whether units valued million plus improve prediction."
-  )
-) 
- 
-#M22: median work from home population
-f22 <- update(f21, . ~ . + work_from_home)
-model_log <- bind_rows(
-  model_log,
-  log_model(
-    "M22: median work from home population",
-    f22,
-    "median work from home population",
-    "Tests whether median work from home population prediction."
-  )
-) 
- 
 #M23: distance to nearest university and amount within 1600m buffer
 f23 <- update(f22, . ~ . + university_distance_m + universities_1600m)
 model_log <- bind_rows(
@@ -1230,80 +1343,562 @@ model_log <- bind_rows(
     "Tests whether distance to nearest university and amount within 1600m buffer affects prediction."
   )
 ) 
+```
 
-# Compare all models so far
+### COMPARE ALL MODELS
+
+```{r}
 model_log |>
   arrange(model)
 ```
 
+### MORAN'S I TEST
 
+```{r}
+# Calculate Moran's I for model_log
+moran_log <- moran_cv(
+  formula = f23,
+  train = train,
+  k = 8
+)
+
+moran_log
+
+# Fit the model using the training data
+model <- lm(
+  formula(f23),
+  data = st_drop_geometry(train)
+)
+
+# Extract residuals
+resid_log <- residuals(model)
+
+# Get coordinates
+coords <- st_coordinates(
+  st_point_on_surface(train)
+)
+
+# Create 8-nearest-neighbor spatial weights
+neighbors <- spdep::knearneigh(
+  coords,
+  k = 8,
+  longlat = FALSE
+)
+
+neighbors_list <- spdep::knn2nb(neighbors)
+
+weights <- spdep::nb2listw(
+  neighbors_list,
+  style = "W",
+  zero.policy = TRUE
+)
+
+# Standardize residuals
+resid_std <- as.numeric(scale(resid_log))
+
+# Calculate spatially lagged residuals
+spatial_lag <- spdep::lag.listw(
+  weights,
+  resid_std,
+  zero.policy = TRUE
+)
+
+# Calculate Moran's I
+moran_value <- moran_log
+
+# Create plot
+moran_df <- data.frame(
+  residuals = resid_std,
+  spatial_lag = spatial_lag
+)
+
+ggplot(moran_df, aes(x = residuals, y = spatial_lag)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(
+    title = "Moran Scatterplot: model_log",
+    subtitle = paste("Moran's I =", round(moran_value, 4)),
+    x = "Standardized Model Residuals",
+    y = "Spatially Lagged Residuals"
+  ) +
+  theme_minimal()
+```
+
+The Moran's I value is 0.2314 which suggests that there is little
+evidence of spatial autocorrelation.
+
+### MAPPING MORAN'S I
+
+```{r}
+# Fit model using your updated training data
+model <- lm(
+  formula(f23),
+  data = st_drop_geometry(train)
+)
+
+# Add residuals to the spatial data
+map_residuals <- train |>
+  mutate(residual = residuals(model))
+
+# Map residuals
+ggplot(map_residuals) +
+  geom_sf(aes(color = residual), size = 0.05) +
+  scale_color_gradient2(
+    low = "blue",
+    mid = "purple",
+    high = "red",
+    midpoint = 0,
+    name = "Residual"
+  ) +
+  labs(
+    title = "Spatial Distribution of House Price Model Residuals",
+    subtitle = "Model f23",
+    color = "Residual ($)"
+  ) +
+  theme_minimal()
+```
+
+The residuals appear to be evenly distributed across our study area and
+look visually similar to our intial map of all data points. This
+suggests that our residuals are not spatially clustered in any specific
+areas of the city and that we have added sufficient predictors to
+account for spatial anomalies.
 
 #TO BE ADDED
 
-# other transit
-#zoning
-#proximity to x type of store (venture)
-#universities
-#proximity to waterfront
-#grocery store type (whole foods)
-#bars
+#other transit
 
-
+#zoning #proximity to x type of store (venture) #universities #proximity
+to waterfront #grocery store type (whole foods) #bars
 
 #ADDED
 
 #From all_sales
 
-#num bedrooms (REMOVED: made rmse go up)
-#sq footage
-#building age
-#Full bathrooms ( REMOVE makes rmse go up)
-#central air (REMOVE makes rmse go up)
-#warm air furnace (REMOVE makes rmse go up )
+#num bedrooms (REMOVED: made rmse go up) #sq footage #building age #Full
+bathrooms ( REMOVE makes rmse go up) #central air (REMOVE makes rmse go
+up) #warm air furnace (REMOVE makes rmse go up )
 
 #(ACS WITHIN CENSUS TRACT)
 
-#income 
-#Median age
-#population
-#bachelors or higher
-#Median rent
-#Vacant units
-#median real estate taxes paid
-#population below poverty
-#work from home
-#med amount units valued 1million plus
+#income #Median age #population #bachelors or higher #Median rent
+#Vacant units #median real estate taxes paid #population below poverty
+#work from home #med amount units valued 1million plus
 
 #Outside of acs open data
 
-#500m buffer to parks (counts both how many parks are within that buffer from the house and also has variable counting distance to closest park)
-# 800m buffer to CTA rail stations(counts both how many stations are within that buffer from the house and also has variable counting distance to closest station)
-#amount of public schools within 1600m buffer, nearest public school, median attendance of schools within 1600m
-#Binary in or outside of landmark district and distance to nearest landmark district
-#HOLC redlining grades
-#distance to closest university and the amount of universities within 1600m buffer
+#500m buffer to parks (counts both how many parks are within that buffer
+from the house and also has variable counting distance to closest park)
+\# 800m buffer to CTA rail stations(counts both how many stations are
+within that buffer from the house and also has variable counting
+distance to closest station) #amount of public schools within 1600m
+buffer, nearest public school, median attendance of schools within 1600m
+#Binary in or outside of landmark district and distance to nearest
+landmark district #HOLC redlining grades #distance to closest university
+and the amount of universities within 1600m buffer
 
----
+------------------------------------------------------------------------
 
 ## Part 3: Final model
 
-Show your final model, the model log, and baseline vs. final residual maps.
+Show your final model, the model log, and baseline vs. final residual
+maps.
+
+### Final model
 
 ```{r}
 #| label: part-3
+# Set up model_log_final
+model_log_final <- tibble(
+  model = character(),
+  added = character(),
+  cv_rmse = double(),
+  moran_i = double(),
+  notes = character()
+)
+
+
+# M00: square footage
+ff0 <- sale_price ~ building_000sf
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M00: square footage",
+    ff0,
+    "Square footage",
+    "Model using building square footage."
+  )
+)
+
+# M01: Add building age
+ff1 <- update(ff0, . ~ . + building_age)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M01: Add building age",
+    ff1,
+    "Building age",
+    "Tests whether building age improves prediction."
+  )
+)
+
+# M02: Add one-story indicator
+ff2 <- update(ff1, . ~ . + one_story)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M02: Add one-story indicator",
+    ff2,
+    "One-story indicator",
+    "Tests whether a one-story property indicator improves prediction."
+  )
+)
+
+# ACS VARIABLES
+
+# M03: Neighborhood income
+ff3 <- update(ff2, . ~ . + median_income)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M03: Neighborhood income",
+    ff3,
+    "Median household income",
+    "Tests whether neighborhood income improves price prediction."
+  )
+)
+
+# M04: Add median age
+ff4 <- update(ff3, . ~ . + median_age)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M04: Add median age",
+    ff4,
+    "Median age",
+    "Tests whether neighborhood age patterns improve prediction."
+  )
+)
+
+# M05: Add population
+ff5 <- update(ff4, . ~ . + total_population)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M05: Add population",
+    ff5,
+    "Total population",
+    "Tests whether neighborhood population adds predictive value."
+  )
+)
+
+# M06: Add education
+ff6 <- update(ff5, . ~ . + bachelors_or_higher)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M06: Add education",
+    ff6,
+    "ACS bachelor's-degree count",
+    "Tests whether neighborhood education characteristics improve prediction."
+  )
+)
+
+# M07: Add median rent
+ff7 <- update(ff6, . ~ . + median_gross_rent)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M07: Add median rent",
+    ff7,
+    "Median gross rent",
+    "Tests whether neighborhood rental-market conditions improve prediction."
+  )
+)
+
+# M08: Median real estate taxes paid
+ff8 <- update(ff7, . ~ . + median_realestate_taxes)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M08: Median real estate taxes",
+    ff8,
+    "Median real estate taxes paid",
+    "Tests whether median real estate taxes improve prediction."
+  )
+)
+
+# M09: Population below poverty level
+ff9 <- update(ff8, . ~ . + below_poverty)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M09: Population below poverty level",
+    ff9,
+    "Population below poverty level",
+    "Tests whether population below poverty level improves prediction."
+  )
+)
+
+# M10: Units valued at $1 million or more
+ff10 <- update(ff9, . ~ . + valued_millionPLS)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M10: Units valued $1 million or more",
+    ff10,
+    "Units valued $1 million or more",
+    "Tests whether high-value housing units improve prediction."
+  )
+)
+
+# M11: Work-from-home population
+ff11 <- update(ff10, . ~ . + work_from_home)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M11: Work-from-home population",
+    ff11,
+    "Work-from-home population",
+    "Tests whether work-from-home population improves prediction."
+  )
+)
+
+# M12: Vacant homes
+ff12 <- update(ff11, . ~ . + vacant)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M12: Vacant homes",
+    ff12,
+    "Vacant homes",
+    "Tests whether neighborhood housing vacancy improves prediction."
+  )
+)
+
+# SPATIAL VARIABLES
+
+# M13: Add parks
+ff13 <- update(
+  ff12,
+  . ~ . + park_distance_m + nearby_park_acres_500m
+)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M13: Add parks",
+    ff13,
+    "Distance to nearest park and park acreage within 500 m",
+    "Tests whether proximity to parks and nearby parkland improve prediction."
+  )
+)
+
+# M14: CTA rail stations
+ff14 <- update(
+  ff13,
+  . ~ . + cta_distance_m + cta_stations_800m
+)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M14: Add CTA rail stations",
+    ff14,
+    "Distance to nearest CTA station and CTA stations within 800 m",
+    "Tests whether proximity to CTA rail stations improves prediction."
+  )
+)
+
+# M15: Metra rail stations
+ff15 <- update(
+  ff14,
+  . ~ . + metra_distance_m + metra_stations_800m
+)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M15: Add Metra rail stations",
+    ff15,
+    "Distance to nearest Metra station and Metra stations within 800 m",
+    "Tests whether proximity to Metra rail stations improves prediction."
+  )
+)
+
+# M16: School characteristics
+ff16 <- update(
+  ff15,
+  . ~ . + school_distance_m +
+    nearby_school_count_1600m +
+    nearby_school_attendance_1600m
+)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M16: Add school characteristics",
+    ff16,
+    "Distance to nearest school, school count, and school attendance within 1600 m",
+    "Tests whether proximity to schools and school attendance improve prediction."
+  )
+)
+
+# M17: Landmark districts
+ff17 <- update(
+  ff16,
+  . ~ . + in_landmark_district + landmark_distance_m
+)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M17: Add landmark districts",
+    ff17,
+    "Landmark district status and distance",
+    "Tests whether proximity to landmark districts improves prediction."
+  )
+)
+
+# M18: HOLC grade
+ff18 <- update(ff17, . ~ . + holc_grade)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M18: Add HOLC grade",
+    ff18,
+    "HOLC grade",
+    "Tests whether historical redlining classifications improve prediction."
+  )
+)
+
+# M19: Universities
+ff19 <- update(
+  ff18,
+  . ~ . + university_distance_m + universities_1600m
+)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M19: Add universities",
+    ff19,
+    "Distance to nearest university and university count within 1600 m",
+    "Tests whether proximity to universities improves prediction."
+  )
+)
+```
+
+### Model log
+
+```{r}
+model_log_final |>
+  arrange(model)
+```
+
+### Map baseline model residuals
+
+```{r}
+model <- lm(
+  formula(f06),
+  data = st_drop_geometry(train)
+)
+
+# Add residuals to the spatial data
+map_residuals <- train |>
+  mutate(residual = residuals(model))
+
+# Map residuals
+ggplot(map_residuals) +
+  geom_sf(aes(color = residual), size = 0.05) +
+  scale_color_gradient2(
+    low = "blue",
+    mid = "purple",
+    high = "red",
+    midpoint = 0,
+    name = "Residual"
+  ) +
+  labs(
+    title = "Spatial Distribution of House Price Baseline Model Residuals",
+    subtitle = "Model f06",
+    color = "Residual ($)"
+  ) +
+  theme_minimal()
+```
+
+### Map final model residuals
+
+```{r}
+model_final <- lm(
+  formula(ff19),
+  data = st_drop_geometry(train)
+)
+
+# Add residuals to the spatial data
+map_residuals <- train |>
+  mutate(residual = residuals(model))
+
+# Map residuals
+ggplot(map_residuals) +
+  geom_sf(aes(color = residual), size = 0.05) +
+  scale_color_gradient2(
+    low = "blue",
+    mid = "purple",
+    high = "red",
+    midpoint = 0,
+    name = "Residual"
+  ) +
+  labs(
+    title = "Spatial Distribution of House Price Final Model Residuals",
+    subtitle = "Model ff19",
+    color = "Residual ($)"
+  ) +
+  theme_minimal()
 ```
 
 **Answer:** What helped most, and what disappointed you? Use your log.
 
-*Your answer:*
+*Your answer:* Median real estate taxes paid, percent of population with
+a bachelor's degree or higher, and median household income lowered the
+RMSE the most (in order). Median real estate taxes outperformed every
+other predictor by a large margin, lowering our RMSE by over 7,000,
+making our prediction \$7,000+ closer. The variables from the initial
+sale listings - number of bedrooms, number of full bathrooms, central
+air, and warm air furnace - made our RMSE worse. We theorize this is
+because location and other geospatial factors are much more influential
+on sale price than the conditions of the actual house itself. For
+example, a small house in a coveted neighborhood will likely be more
+expensive than a large house in an undesirable one. This pattern is true
+in most cities and across the United States as a whole.
 
----
+------------------------------------------------------------------------
 
 ## Part 4: Where it fails, and who pays
 
-**4A.** Where does your final model fail worst? Is it guessing too high or too low there, and why do you think so?
+**4A.** Where does your final model fail worst? Is it guessing too high
+or too low there, and why do you think so?
 
-**4B.** Assessors judge their work with the **ratio** of predicted value to sale price. A ratio above 1 means the home is over-valued and its owner over-taxed. Does your model's ratio differ by neighborhood income? Connect your answer to your Part 1 cleaning rules and to "The Tax Divide."
+**4B.** Assessors judge their work with the **ratio** of predicted value
+to sale price. A ratio above 1 means the home is over-valued and its
+owner over-taxed. Does your model's ratio differ by neighborhood income?
+Connect your answer to your Part 1 cleaning rules and to "The Tax
+Divide."
 
 ```{r}
 #| label: part-4
@@ -1311,11 +1906,12 @@ Show your final model, the model log, and baseline vs. final residual maps.
 
 *Your answers:*
 
----
+------------------------------------------------------------------------
 
 ## Part 5: Predict the test houses (provided)
 
-Refit your final recipe on all training sales, then predict every test house. Set `f_final` to your final formula.
+Refit your final recipe on all training sales, then predict every test
+house. Set `f_final` to your final formula.
 
 ```{r}
 #| label: predict-test
@@ -1330,22 +1926,26 @@ stopifnot(nrow(preds) == nrow(test), all(is.finite(preds$pred)))
 write_csv(preds, "team_XX_predictions.csv")     # replace XX with your team number
 ```
 
-**Final CV RMSE:** ___ . When your test RMSE comes back, you'll explain the gap on Q7.
+**Final CV RMSE:** \_\_\_ . When your test RMSE comes back, you'll
+explain the gap on Q7.
 
----
+------------------------------------------------------------------------
 
 ## Part 6: Reflection (about 300 words, as a team)
 
-1. **Read one coefficient twice:** once as β̂, once for what it does to ŷ.
-2. **Would you hand this model to the Assessor?** What would you warn them about?
+1.  **Read one coefficient twice:** once as β̂, once for what it does to
+    ŷ.
+2.  **Would you hand this model to the Assessor?** What would you warn
+    them about?
 
 *Your answer:*
 
 ### Who did what
 
 | Name | Main contribution |
-|---|---|
-| | |
+|------|-------------------|
+|      |                   |
 
 ### AI Team Statement
-What was your team's AI policy and how was AI used in this assignment? 
+
+What was your team's AI policy and how was AI used in this assignment?
