@@ -1007,7 +1007,7 @@ model_log <- tibble(
   model = character(),
   added = character(),
   cv_rmse = double(),
-  moran_i = double(),
+ # moran_i = double(),
   notes = character()
 )
 
@@ -1017,7 +1017,7 @@ log_model <- function(name, formula, added, notes) {
     model = name,
     added = added,
     cv_rmse = cv_rmse(formula, train),
-    moran_i = moran_cv(formula, train),
+   # moran_i = moran_cv(formula, train),
     notes = notes
   )
 }
@@ -1068,7 +1068,7 @@ model_log <- bind_rows(
   model_log,
   log_model(
     "M03: Add number of full baths",
-    f02,
+    f03,
     "Number of full baths",
     "Tests whether number of full baths improves prediction."
   )
@@ -1157,7 +1157,7 @@ model_log <- bind_rows(
 )
 
 # M10: Add education
-f10 <- update(f9, . ~ . + bachelors_or_higher)
+f10 <- update(f09, . ~ . + bachelors_or_higher)
 
 model_log <- bind_rows(
   model_log,
@@ -1349,8 +1349,9 @@ model_log <- bind_rows(
 
 ```{r}
 model_log |>
-  arrange(model)
+  arrange(cv_rmse)
 ```
+
 
 ### MORAN'S I TEST
 
@@ -1477,8 +1478,8 @@ to waterfront #grocery store type (whole foods) #bars
 
 #From all_sales
 
-#num bedrooms (REMOVED: made rmse go up) #sq footage #building age #Full
-bathrooms ( REMOVE makes rmse go up) #central air (REMOVE makes rmse go
+#num bedrooms  #sq footage #building age #Full
+bathrooms, #central air (REMOVE makes rmse go
 up) #warm air furnace (REMOVE makes rmse go up )
 
 #(ACS WITHIN CENSUS TRACT)
@@ -1533,27 +1534,40 @@ model_log_final <- bind_rows(
   )
 )
 
-# M01: Add building age
-ff1 <- update(ff0, . ~ . + building_age)
+# M01: Add number of full baths
+ff1 <- update(ff0, . ~ . + num_full_baths)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M01: Add building age",
+    "M01: Add number of full baths",
     ff1,
+    "Number of full baths",
+    "Tests whether number of full baths improves prediction."
+  )
+)
+
+# M02: Add building age
+ff2 <- update(ff1, . ~ . + building_age)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M02: Add building age",
+    ff2,
     "Building age",
     "Tests whether building age improves prediction."
   )
 )
 
-# M02: Add one-story indicator
-ff2 <- update(ff1, . ~ . + one_story)
+# M03: Add one-story indicator
+ff3 <- update(ff2, . ~ . + one_story)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M02: Add one-story indicator",
-    ff2,
+    "M03: Add one-story indicator",
+    ff3,
     "One-story indicator",
     "Tests whether a one-story property indicator improves prediction."
   )
@@ -1561,131 +1575,143 @@ model_log_final <- bind_rows(
 
 # ACS VARIABLES
 
-# M03: Neighborhood income
-ff3 <- update(ff2, . ~ . + median_income)
+# M04: Neighborhood income
+ff4 <- update(ff3, . ~ . + median_income)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M03: Neighborhood income",
-    ff3,
+    "M04: Neighborhood income",
+    ff4,
     "Median household income",
     "Tests whether neighborhood income improves price prediction."
   )
 )
 
-# M04: Add median age
-ff4 <- update(ff3, . ~ . + median_age)
+#M05: median real estate taxes paid
+ff5 <- update(ff4, . ~ . + median_realestate_taxes)
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M05: median real estate taxes paid",
+    ff5,
+    "median real estate taxes paid",
+    "Tests whether median real estate taxes paid improve prediction."
+  )
+)
+
+# M06: Add median age
+ff6 <- update(ff5, . ~ . + median_age)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M04: Add median age",
-    ff4,
+    "M06: Add median age",
+    ff6,
     "Median age",
     "Tests whether neighborhood age patterns improve prediction."
   )
 )
 
-# M05: Add population
-ff5 <- update(ff4, . ~ . + total_population)
+# M07: Add population
+ff7 <- update(ff6, . ~ . + total_population)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M05: Add population",
-    ff5,
+    "M07: Add population",
+    ff7,
     "Total population",
     "Tests whether neighborhood population adds predictive value."
   )
 )
 
-# M06: Add education
-ff6 <- update(ff5, . ~ . + bachelors_or_higher)
+# M08: Add education
+ff8 <- update(ff7, . ~ . + bachelors_or_higher)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M06: Add education",
-    ff6,
+    "M08: Add education",
+    ff8,
     "ACS bachelor's-degree count",
     "Tests whether neighborhood education characteristics improve prediction."
   )
 )
 
-# M07: Add median rent
-ff7 <- update(ff6, . ~ . + median_gross_rent)
+# M09: Add median rent
+ff9 <- update(ff8, . ~ . + median_gross_rent)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M07: Add median rent",
-    ff7,
+    "M09: Add median rent",
+    ff9,
     "Median gross rent",
     "Tests whether neighborhood rental-market conditions improve prediction."
   )
 )
 
-# M08: Median real estate taxes paid
-ff8 <- update(ff7, . ~ . + median_realestate_taxes)
+# # M10: Median real estate taxes paid
+# ff10 <- update(ff9, . ~ . + median_realestate_taxes)
+# 
+# model_log_final <- bind_rows(
+#   model_log_final,
+#   log_model(
+#     "M10: Median real estate taxes",
+#     ff10,
+#     "Median real estate taxes paid",
+#     "Tests whether median real estate taxes improve prediction."
+#   )
+# )
+
+# M11: Population below poverty level
+ff11 <- update(ff9, . ~ . + below_poverty)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M08: Median real estate taxes",
-    ff8,
-    "Median real estate taxes paid",
-    "Tests whether median real estate taxes improve prediction."
-  )
-)
-
-# M09: Population below poverty level
-ff9 <- update(ff8, . ~ . + below_poverty)
-
-model_log_final <- bind_rows(
-  model_log_final,
-  log_model(
-    "M09: Population below poverty level",
-    ff9,
+    "M11: Population below poverty level",
+    ff11,
     "Population below poverty level",
     "Tests whether population below poverty level improves prediction."
   )
 )
 
 # M10: Units valued at $1 million or more
-ff10 <- update(ff9, . ~ . + valued_millionPLS)
+ff12 <- update(ff11, . ~ . + valued_millionPLS)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M10: Units valued $1 million or more",
-    ff10,
+    "M12: Units valued $1 million or more",
+    ff12,
     "Units valued $1 million or more",
     "Tests whether high-value housing units improve prediction."
   )
 )
 
 # M11: Work-from-home population
-ff11 <- update(ff10, . ~ . + work_from_home)
+ff13 <- update(ff12, . ~ . + work_from_home)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M11: Work-from-home population",
-    ff11,
+    "M13: Work-from-home population",
+    ff13,
     "Work-from-home population",
     "Tests whether work-from-home population improves prediction."
   )
 )
 
-# M12: Vacant homes
-ff12 <- update(ff11, . ~ . + vacant)
+# M14: Vacant homes
+ff14 <- update(ff13, . ~ . + vacant)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M12: Vacant homes",
-    ff12,
+    "M14: Vacant homes",
+    ff14,
     "Vacant homes",
     "Tests whether neighborhood housing vacancy improves prediction."
   )
@@ -1693,57 +1719,56 @@ model_log_final <- bind_rows(
 
 # SPATIAL VARIABLES
 
-# M13: Add parks
-ff13 <- update(
-  ff12,
+# M15: Add parks
+ff15 <- update(ff14,
   . ~ . + park_distance_m + nearby_park_acres_500m
 )
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M13: Add parks",
-    ff13,
+    "M15: Add parks",
+    ff15,
     "Distance to nearest park and park acreage within 500 m",
     "Tests whether proximity to parks and nearby parkland improve prediction."
   )
 )
 
-# M14: CTA rail stations
-ff14 <- update(
-  ff13,
+# M16: CTA rail stations
+ff16 <- update(
+  ff15,
   . ~ . + cta_distance_m + cta_stations_800m
 )
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M14: Add CTA rail stations",
-    ff14,
+    "M16: Add CTA rail stations",
+    ff16,
     "Distance to nearest CTA station and CTA stations within 800 m",
     "Tests whether proximity to CTA rail stations improves prediction."
   )
 )
 
-# M15: Metra rail stations
-ff15 <- update(
-  ff14,
+# M17: Metra rail stations
+ff17 <- update(
+  ff16,
   . ~ . + metra_distance_m + metra_stations_800m
 )
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M15: Add Metra rail stations",
-    ff15,
+    "M17: Add Metra rail stations",
+    ff17,
     "Distance to nearest Metra station and Metra stations within 800 m",
     "Tests whether proximity to Metra rail stations improves prediction."
   )
 )
 
-# M16: School characteristics
-ff16 <- update(
-  ff15,
+# M18: School characteristics
+ff18 <- update(
+  ff17,
   . ~ . + school_distance_m +
     nearby_school_count_1600m +
     nearby_school_attendance_1600m
@@ -1752,53 +1777,53 @@ ff16 <- update(
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M16: Add school characteristics",
-    ff16,
+    "M18: Add school characteristics",
+    ff18,
     "Distance to nearest school, school count, and school attendance within 1600 m",
     "Tests whether proximity to schools and school attendance improve prediction."
   )
 )
 
-# M17: Landmark districts
-ff17 <- update(
-  ff16,
+# M19: Landmark districts
+ff19 <- update(
+  ff18,
   . ~ . + in_landmark_district + landmark_distance_m
 )
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M17: Add landmark districts",
-    ff17,
+    "M19: Add landmark districts",
+    ff19,
     "Landmark district status and distance",
     "Tests whether proximity to landmark districts improves prediction."
   )
 )
 
-# M18: HOLC grade
-ff18 <- update(ff17, . ~ . + holc_grade)
+# M20: HOLC grade
+ff20 <- update(ff19, . ~ . + holc_grade)
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M18: Add HOLC grade",
-    ff18,
+    "M20: Add HOLC grade",
+    ff20,
     "HOLC grade",
     "Tests whether historical redlining classifications improve prediction."
   )
 )
 
-# M19: Universities
-ff19 <- update(
-  ff18,
+# M21: Universities
+ff21 <- update(
+  ff20,
   . ~ . + university_distance_m + universities_1600m
 )
 
 model_log_final <- bind_rows(
   model_log_final,
   log_model(
-    "M19: Add universities",
-    ff19,
+    "M21: Add universities",
+    ff21,
     "Distance to nearest university and university count within 1600 m",
     "Tests whether proximity to universities improves prediction."
   )
@@ -1809,7 +1834,7 @@ model_log_final <- bind_rows(
 
 ```{r}
 model_log_final |>
-  arrange(model)
+  arrange(cv_rmse)
 ```
 
 ### Map baseline model residuals
