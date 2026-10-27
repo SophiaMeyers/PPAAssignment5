@@ -1904,6 +1904,7 @@ a bachelor's degree or higher, and median household income lowered the
 RMSE the most (in order). Median real estate taxes outperformed every
 other predictor by a large margin, lowering our RMSE by over 7,000,
 making our prediction \$7,000+ closer. The variables from the initial
+sale listings - central air, and warm air furnace - made our RMSE worse. We theorize this is
 because location and other geospatial factors are much more influential
 on sale price than the conditions of the actual house itself. For
 example, a small house in a coveted neighborhood will likely be more
