@@ -984,6 +984,8 @@ train <- all_sales |>
   filter(split == "train")
 ```
 
+
+
 ### Baseline model
 
 ```{r}
@@ -1652,21 +1654,21 @@ model_log_final <- bind_rows(
   )
 )
 
-# # M10: Median real estate taxes paid
-# ff10 <- update(ff9, . ~ . + median_realestate_taxes)
-# 
-# model_log_final <- bind_rows(
-#   model_log_final,
-#   log_model(
-#     "M10: Median real estate taxes",
-#     ff10,
-#     "Median real estate taxes paid",
-#     "Tests whether median real estate taxes improve prediction."
-#   )
-# )
+# M10: Median real estate taxes paid
+ff10 <- update(ff9, . ~ . + median_realestate_taxes)
+
+model_log_final <- bind_rows(
+  model_log_final,
+  log_model(
+    "M10: Median real estate taxes",
+    ff10,
+    "Median real estate taxes paid",
+    "Tests whether median real estate taxes improve prediction."
+  )
+)
 
 # M11: Population below poverty level
-ff11 <- update(ff9, . ~ . + below_poverty)
+ff11 <- update(ff10, . ~ . + below_poverty)
 
 model_log_final <- bind_rows(
   model_log_final,
@@ -1876,11 +1878,11 @@ model_final <- lm(
 )
 
 # Add residuals to the spatial data
-map_residuals <- train |>
-  mutate(residual = residuals(model))
+map_residuals_final <- train |>
+  mutate(residual = residuals(model_final))
 
 # Map residuals
-ggplot(map_residuals) +
+ggplot(map_residuals_final) +
   geom_sf(aes(color = residual), size = 0.05) +
   scale_color_gradient2(
     low = "blue",
@@ -1916,7 +1918,51 @@ in most cities and across the United States as a whole.
 ## Part 4: Where it fails, and who pays
 
 **4A.** Where does your final model fail worst? Is it guessing too high
-or too low there, and why do you think so?
+or too low there, and why do you think so? 
+
+### Local Moran's I 
+```{r}
+w_knn <- nb2listw(knn2nb(knearneigh(st_coordinates(map_residuals_final), k = 5)), style = "W")
+lisa_quads <- function(resid, w, alpha = 0.01) {
+  lm_perm <- localmoran_perm(resid, w, nsim = 499)
+  z   <- resid - mean(resid)
+  lag <- lag.listw(w, z)
+  p   <- lm_perm[, "Pr(z != E(Ii)) Sim"]
+  case_when(
+    p >= alpha        ~ "Not significant",
+    z > 0 & lag > 0   ~ "High-High",
+    z < 0 & lag < 0   ~ "Low-Low",
+    z > 0 & lag < 0   ~ "High-Low",
+    TRUE              ~ "Low-High"
+  )
+}
+
+map_residuals_final$quad_1 <- lisa_quads(map_residuals_final$residual, w_knn)
+table(map_residuals_final$quad_1)
+```
+```{r}
+quad_cols <- c("High-High" = "#b2182b", "Low-Low" = "#2166ac",
+               "High-Low" = "#f4a582", "Low-High" = "#92c5de",
+               "Not significant" = "grey88")
+
+ggplot() +
+  geom_sf(data = filter( map_residuals_final, quad_1 == "Not significant"),
+          color = "grey88", size = 0.3) +
+  geom_sf(data = filter(map_residuals_final, quad_1 != "Not significant"),
+          aes(color = quad_1), size = 0.6) +
+  scale_color_manual(values = quad_cols) +
+  theme_void() +
+  labs(color = NULL, title = "Where the errors cluster",
+       subtitle = "Red: pockets we under-predict · Blue: pockets we over-predict")
+```
+*Why the model under-predicts in the red cluster?*
+
+The red cluster is along the North Side lakefront in Lincoln Park and Lakeview, and here our model guesses too low. We think this is because our features can measure how far a home is from a park, school or train station, but not how special that place is. Living near the lake, right next to Lincoln Park, or inside the Lincoln or Blaine school boundaries adds a lot to a home’s price, and the model has no way to see that. A lot of homes here have been fully renovated or rebuilt, but our data only has the original build year, so the model treats a brand-new interior like a 120-year-old house. 
+
+*Why the model over-predicts in Beverly and the other blue clusters?*
+
+Our model guesses too high in Beverly, and we think it’s because Beverly looks like a rich North Side neighborhood in the data but is actually far from downtown. It has high incomes, lots of college graduates, high homeownership and few vacant homes. In Chicago, most neighborhoods like that are close to the Loop, so when the model learned that higher income means higher prices, part of that was really about being central. Beverly is wealthy but about 15 miles from downtown, so the model gives it a boost it doesn’t earn. Beverly also has two landmark districts and several Metra stops, and the model learned those as price boosts mostly from places like Lincoln Park and Old Town, which are much closer in. On top of that, a few very large historic homes on the ridge pull up the neighborhood averages, so the regular bungalows nearby get predicted higher than they actually sell for. We see a similar pattern in the blue clusters on the far Northwest Side, around Edison Park and Norwood Park. These are also comfortable neighborhoods far from downtown, so the model reads the good demographics and misses the distance.
+
 
 **4B.** Assessors judge their work with the **ratio** of predicted value
 to sale price. A ratio above 1 means the home is over-valued and its
@@ -1926,9 +1972,31 @@ Divide."
 
 ```{r}
 #| label: part-4
+ratio_df <- map_residuals_final %>%
+  mutate(predicted = sale_price - residual,      # residual = actual - predicted
+         ratio     = predicted / sale_price)     # > 1 = over-valued
+
+ratio_df <- ratio_df %>%
+  st_join(tract_inc, join = st_nearest_feature)
+
+ratio_df <- ratio_df %>%
+  st_drop_geometry() %>%
+  filter(!is.na(med_inc)) %>%
+  mutate(inc_quintile = ntile(med_inc, 5))   # 1 = poorest ... 5 = richest
+
+ratio_by_income <- ratio_df %>%
+  group_by(inc_quintile) %>%
+  summarise(n            = n(),
+            income_low   = min(med_inc),
+            income_high  = max(med_inc),
+            median_ratio = median(ratio),
+            pct_over     = mean(ratio > 1) * 100)
+
+ratio_by_income
 ```
 
 *Your answers:*
+Yes, our model’s ratio rises with neighborhood income. In the poorest fifth of neighborhoods, the typical home is predicted at 89% of its sale price, so it’s under-valued. In the richest fifth, it’s predicted 13% above its sale price, so it’s over-valued. This is the opposite of “The Tax Divide,” which found the Assessor over-valued cheaper homes. We think our model leans on neighborhood features like median income, which push every home in a rich tract up and every home in a poor tract down. Our Part 1 cleaning removed no sales, so 108 sales under $25,000 that may not be real market sales stayed in. We used the median ratio so those few extreme sales wouldn’t distort the result.
 
 ------------------------------------------------------------------------
 
