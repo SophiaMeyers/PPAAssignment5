@@ -1183,12 +1183,12 @@ model_log <- bind_rows(
 )
 
 #M12: median real estate taxes paid
-f12 <- update(f12, . ~ . + median_realestate_taxes)
+f12 <- update(f11, . ~ . + median_realestate_taxes)
 model_log <- bind_rows(
   model_log,
   log_model(
     "M12: median real estate taxes paid",
-    f11,
+    f12,
     "median real estate taxes paid",
     "Tests whether median real estate taxes paid improve prediction."
   )
