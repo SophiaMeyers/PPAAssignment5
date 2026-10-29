@@ -1185,7 +1185,7 @@ model_log <- bind_rows(
 )
 
 #M12: median real estate taxes paid
-f12 <- update(f11, . ~ . + median_realestate_taxes)
+f12 <- update(f12, . ~ . + median_realestate_taxes)
 model_log <- bind_rows(
   model_log,
   log_model(
@@ -1429,8 +1429,7 @@ ggplot(moran_df, aes(x = residuals, y = spatial_lag)) +
   theme_minimal()
 ```
 
-The Moran's I value is 0.2314 which suggests that there is little
-evidence of spatial autocorrelation.
+The Moran's I value is 0.2314 which suggests moderate positive spatial autocorrelation.
 
 ### MAPPING MORAN'S I
 
@@ -1464,7 +1463,7 @@ ggplot(map_residuals) +
 ```
 
 The residuals appear to be evenly distributed across our study area and
-look visually similar to our intial map of all data points. This
+look visually similar to our initial map of all data points. This
 suggests that our residuals are not spatially clustered in any specific
 areas of the city and that we have added sufficient predictors to
 account for spatial anomalies.
@@ -1961,7 +1960,7 @@ The red cluster is along the North Side lakefront in Lincoln Park and Lakeview, 
 
 *Why the model over-predicts in Beverly and the other blue clusters?*
 
-Our model guesses too high in Beverly, and we think it’s because Beverly looks like a rich North Side neighborhood in the data but is actually far from downtown. It has high incomes, lots of college graduates, high homeownership and few vacant homes. In Chicago, most neighborhoods like that are close to the Loop, so when the model learned that higher income means higher prices, part of that was really about being central. Beverly is wealthy but about 15 miles from downtown, so the model gives it a boost it doesn’t earn. Beverly also has two landmark districts and several Metra stops, and the model learned those as price boosts mostly from places like Lincoln Park and Old Town, which are much closer in. On top of that, a few very large historic homes on the ridge pull up the neighborhood averages, so the regular bungalows nearby get predicted higher than they actually sell for. We see a similar pattern in the blue clusters on the far Northwest Side, around Edison Park and Norwood Park. These are also comfortable neighborhoods far from downtown, so the model reads the good demographics and misses the distance.
+Our model guesses too high in Beverly, and we think it’s because Beverly looks like a rich North Side neighborhood to our model. The model doesn't account for how far it is from downtown. It has high incomes, lots of college graduates, high homeownership and few vacant homes. In Chicago, most neighborhoods like that are close to the Loop, so when the model learned that higher income means higher prices, part of that was really about being central. Beverly is wealthy but about 15 miles from downtown, so the model gives it a boost it doesn’t earn. Beverly also has two landmark districts and several Metra stops, and the model learned those as price boosts mostly from places like Lincoln Park and Old Town, which are much closer to the downtown. On top of that, a few very large historic homes on the ridge pull up the neighborhood averages, so the regular bungalows nearby get predicted higher than they actually sell for. We see a similar pattern in the blue clusters on the far Northwest Side, around Edison Park and Norwood Park. These are also comfortable neighborhoods far from downtown, so the model reads the good demographics and misses the distance.
 
 
 **4B.** Assessors judge their work with the **ratio** of predicted value
@@ -1977,18 +1976,18 @@ ratio_df <- map_residuals_final %>%
          ratio     = predicted / sale_price)     # > 1 = over-valued
 
 ratio_df <- ratio_df %>%
-  st_join(tract_inc, join = st_nearest_feature)
+  st_join(acs_tracts, join = st_nearest_feature)
 
 ratio_df <- ratio_df %>%
   st_drop_geometry() %>%
-  filter(!is.na(med_inc)) %>%
-  mutate(inc_quintile = ntile(med_inc, 5))   # 1 = poorest ... 5 = richest
+  filter(!is.na(median_income.y)) %>%
+  mutate(inc_quintile = ntile(median_income.y, 5))   # 1 = poorest ... 5 = richest
 
 ratio_by_income <- ratio_df %>%
   group_by(inc_quintile) %>%
   summarise(n            = n(),
-            income_low   = min(med_inc),
-            income_high  = max(med_inc),
+            income_low   = min(median_income.y),
+            income_high  = max(median_income.y),
             median_ratio = median(ratio),
             pct_over     = mean(ratio > 1) * 100)
 
@@ -2007,15 +2006,16 @@ house. Set `f_final` to your final formula.
 
 ```{r}
 #| label: predict-test
+f_final <- ff19
 m_final <- lm(f_final, data = st_drop_geometry(train))
 
 test <- all_sales %>% filter(split == "test")
-check_na(f_final, st_drop_geometry(test))       # fill NAs; never drop test rows
+check_na(delete.response(terms(f_final)), st_drop_geometry(test))   # check predictors only
 
 preds <- tibble(id = test$id, pred = predict(m_final, st_drop_geometry(test)))
 
 stopifnot(nrow(preds) == nrow(test), all(is.finite(preds$pred)))
-write_csv(preds, "team_XX_predictions.csv")     # replace XX with your team number
+write_csv(preds, "team_fun_predictions.csv")
 ```
 
 **Final CV RMSE:** \_\_\_ . When your test RMSE comes back, you'll
@@ -2027,17 +2027,27 @@ explain the gap on Q7.
 
 1.  **Read one coefficient twice:** once as β̂, once for what it does to
     ŷ.
+    
+The coefficient of building_000sf (each home's square footage) is 382,377. This means that when holding all other variables constant, an increase of 1,000 sq feet is associated with a 382,377 higher sale price based on the training data. Its standard error is 4,961, which tells us how much the coefficient may vary if we had a different sample. 
+
+When the model predicts on the test data, it adds $382,377 per 1,000 sq ft  (or 382 dollars per 1 sq ft) to every house in every neighborhood. As we noted earlier, the model applies this average to every house, no matter the neighborhood. The issue here is that relationships change across space (spacial non-stationarity), so an additional 500 sq is worth more in areas with more expensive land. This appears to be one reason why we get clustered errors. 
+    
 2.  **Would you hand this model to the Assessor?** What would you warn
     them about?
+
+We would not hand this model to the Assessor yet because our residual map still shows some spatial clustering. While it is not egregious (Moran's I is .23 for final model), it does mean that our model is missing a spatial variable that would more accurately predict the sales prices. Ultimately, this means that the model could more accurately predict sales prices. We would warn them that our model underpredicts the red clustered points in North Side lakefront in Lincoln Park and Lakeview and that it overpredicts the blue clustered points in Beverly. 
+
+We would also tell the assessor that we did relatively light data manipulation ahead of our regression analysis. We kept all homes in our data that sold for more than \$1. There were 108 houses that sold for less than \$25,000. This means that our data presumably included figures that were non market sales. We chose to prioritize having more data that could possibly resemble our test data, even if it meant retaining potential outliers.  
 
 *Your answer:*
 
 ### Who did what
-
-| Name | Main contribution |
-|------|-------------------|
-|      |                   |
-
+ 
+We met two times in person to go over the assignment and go through the code altogether. We all worked on part 1 together. Tegan, Gautami, and Sophia identified the variables we wanted to use and found the associated data. Sophia completed section 2; she loaded the data and built the model. Tegan completed section 3, Gautami completed section 4, and Sara did section 5. We all worked on the reflection.  
+ 
 ### AI Team Statement
 
 What was your team's AI policy and how was AI used in this assignment?
+
+We used it to verify code syntax when we couldn't find it in previous assignments, clarify definitions, and help us interpret instructions that we had trouble understanding. We did not use it for the narrative portions. 
+
