@@ -1869,7 +1869,7 @@ ggplot(map_residuals) +
 
 ```{r}
 model_final <- lm(
-  formula(ff19),
+  formula(ff21),
   data = st_drop_geometry(train)
 )
 
@@ -1889,7 +1889,7 @@ ggplot(map_residuals_final) +
   ) +
   labs(
     title = "Spatial Distribution of House Price Final Model Residuals",
-    subtitle = "Model ff19",
+    subtitle = "Model ff21",
     color = "Residual ($)"
   ) +
   theme_minimal()
@@ -2037,7 +2037,7 @@ house. Set `f_final` to your final formula.
 
 ```{r}
 #| label: predict-test
-f_final <- ff19
+f_final <- ff21
 m_final <- lm(f_final, data = st_drop_geometry(train))
 
 test <- all_sales %>% filter(split == "test")
@@ -2052,7 +2052,7 @@ final_cv <- cv_rmse(f_final, train)
 final_cv
 ```
 
-**Final CV RMSE:** $301,685. When our test RMSE comes back, we'll explain the gap on Q7.
+**Final CV RMSE:** $299452.8 When our test RMSE comes back, we'll explain the gap on Q7.
 
 ------------------------------------------------------------------------
 
