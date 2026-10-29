@@ -2047,10 +2047,12 @@ preds <- tibble(id = test$id, pred = predict(m_final, st_drop_geometry(test)))
 
 stopifnot(nrow(preds) == nrow(test), all(is.finite(preds$pred)))
 write_csv(preds, "team_fun_predictions.csv")
+
+final_cv <- cv_rmse(f_final, train)
+final_cv
 ```
 
-**Final CV RMSE:** \_\_\_ . When your test RMSE comes back, you'll
-explain the gap on Q7.
+**Final CV RMSE:** $301,685. When our test RMSE comes back, we'll explain the gap on Q7.
 
 ------------------------------------------------------------------------
 
