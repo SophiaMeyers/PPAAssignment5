@@ -984,8 +984,6 @@ train <- all_sales |>
   filter(split == "train")
 ```
 
-
-
 ### Baseline model
 
 ```{r}
@@ -1354,7 +1352,6 @@ model_log |>
   arrange(cv_rmse)
 ```
 
-
 ### MORAN'S I TEST
 
 ```{r}
@@ -1429,7 +1426,8 @@ ggplot(moran_df, aes(x = residuals, y = spatial_lag)) +
   theme_minimal()
 ```
 
-The Moran's I value is 0.2314 which suggests moderate positive spatial autocorrelation.
+The Moran's I value is 0.2314 which suggests moderate positive spatial
+autocorrelation.
 
 ### MAPPING MORAN'S I
 
@@ -1479,9 +1477,8 @@ to waterfront #grocery store type (whole foods) #bars
 
 #From all_sales
 
-#num bedrooms  #sq footage #building age #Full
-bathrooms, #central air (REMOVE makes rmse go
-up) #warm air furnace (REMOVE makes rmse go up )
+#num bedrooms #sq footage #building age #Full bathrooms, #central air
+(REMOVE makes rmse go up) #warm air furnace (REMOVE makes rmse go up )
 
 #(ACS WITHIN CENSUS TRACT)
 
@@ -1905,21 +1902,22 @@ a bachelor's degree or higher, and median household income lowered the
 RMSE the most (in order). Median real estate taxes outperformed every
 other predictor by a large margin, lowering our RMSE by over 7,000,
 making our prediction \$7,000+ closer. The variables from the initial
-sale listings - central air, and warm air furnace - made our RMSE worse. We theorize this is
-because location and other geospatial factors are much more influential
-on sale price than the conditions of the actual house itself. For
-example, a small house in a coveted neighborhood will likely be more
-expensive than a large house in an undesirable one. This pattern is true
-in most cities and across the United States as a whole.
+sale listings - central air, and warm air furnace - made our RMSE worse.
+We theorize this is because location and other geospatial factors are
+much more influential on sale price than the conditions of the actual
+house itself. For example, a small house in a coveted neighborhood will
+likely be more expensive than a large house in an undesirable one. This
+pattern is true in most cities and across the United States as a whole.
 
 ------------------------------------------------------------------------
 
 ## Part 4: Where it fails, and who pays
 
 **4A.** Where does your final model fail worst? Is it guessing too high
-or too low there, and why do you think so? 
+or too low there, and why do you think so?
 
-### Local Moran's I 
+### Local Moran's I
+
 ```{r}
 w_knn <- nb2listw(knn2nb(knearneigh(st_coordinates(map_residuals_final), k = 5)), style = "W")
 lisa_quads <- function(resid, w, alpha = 0.01) {
@@ -1939,6 +1937,7 @@ lisa_quads <- function(resid, w, alpha = 0.01) {
 map_residuals_final$quad_1 <- lisa_quads(map_residuals_final$residual, w_knn)
 table(map_residuals_final$quad_1)
 ```
+
 ```{r}
 quad_cols <- c("High-High" = "#b2182b", "Low-Low" = "#2166ac",
                "High-Low" = "#f4a582", "Low-High" = "#92c5de",
@@ -1954,14 +1953,38 @@ ggplot() +
   labs(color = NULL, title = "Where the errors cluster",
        subtitle = "Red: pockets we under-predict · Blue: pockets we over-predict")
 ```
+
 *Why the model under-predicts in the red cluster?*
 
-The red cluster is along the North Side lakefront in Lincoln Park and Lakeview, and here our model guesses too low. We think this is because our features can measure how far a home is from a park, school or train station, but not how special that place is. Living near the lake, right next to Lincoln Park, or inside the Lincoln or Blaine school boundaries adds a lot to a home’s price, and the model has no way to see that. A lot of homes here have been fully renovated or rebuilt, but our data only has the original build year, so the model treats a brand-new interior like a 120-year-old house. 
+The red cluster is along the North Side lakefront in Lincoln Park and
+Lakeview, and here our model guesses too low. We think this is because
+our features can measure how far a home is from a park, school or train
+station, but not how special that place is. Living near the lake, right
+next to Lincoln Park, or inside the Lincoln or Blaine school boundaries
+adds a lot to a home’s price, and the model has no way to see that. A
+lot of homes here have been fully renovated or rebuilt, but our data
+only has the original build year, so the model treats a brand-new
+interior like a 120-year-old house.
 
 *Why the model over-predicts in Beverly and the other blue clusters?*
 
-Our model guesses too high in Beverly, and we think it’s because Beverly looks like a rich North Side neighborhood to our model. The model doesn't account for how far it is from downtown. It has high incomes, lots of college graduates, high homeownership and few vacant homes. In Chicago, most neighborhoods like that are close to the Loop, so when the model learned that higher income means higher prices, part of that was really about being central. Beverly is wealthy but about 15 miles from downtown, so the model gives it a boost it doesn’t earn. Beverly also has two landmark districts and several Metra stops, and the model learned those as price boosts mostly from places like Lincoln Park and Old Town, which are much closer to the downtown. On top of that, a few very large historic homes on the ridge pull up the neighborhood averages, so the regular bungalows nearby get predicted higher than they actually sell for. We see a similar pattern in the blue clusters on the far Northwest Side, around Edison Park and Norwood Park. These are also comfortable neighborhoods far from downtown, so the model reads the good demographics and misses the distance.
-
+Our model guesses too high in Beverly, and we think it’s because Beverly
+looks like a rich North Side neighborhood to our model. The model
+doesn't account for how far it is from downtown. It has high incomes,
+lots of college graduates, high homeownership and few vacant homes. In
+Chicago, most neighborhoods like that are close to the Loop, so when the
+model learned that higher income means higher prices, part of that was
+really about being central. Beverly is wealthy but about 15 miles from
+downtown, so the model gives it a boost it doesn’t earn. Beverly also
+has two landmark districts and several Metra stops, and the model
+learned those as price boosts mostly from places like Lincoln Park and
+Old Town, which are much closer to the downtown. On top of that, a few
+very large historic homes on the ridge pull up the neighborhood
+averages, so the regular bungalows nearby get predicted higher than they
+actually sell for. We see a similar pattern in the blue clusters on the
+far Northwest Side, around Edison Park and Norwood Park. These are also
+comfortable neighborhoods far from downtown, so the model reads the good
+demographics and misses the distance.
 
 **4B.** Assessors judge their work with the **ratio** of predicted value
 to sale price. A ratio above 1 means the home is over-valued and its
@@ -1994,8 +2017,16 @@ ratio_by_income <- ratio_df %>%
 ratio_by_income
 ```
 
-*Your answers:*
-Yes, our model’s ratio rises with neighborhood income. In the poorest fifth of neighborhoods, the typical home is predicted at 89% of its sale price, so it’s under-valued. In the richest fifth, it’s predicted 13% above its sale price, so it’s over-valued. This is the opposite of “The Tax Divide,” which found the Assessor over-valued cheaper homes. We think our model leans on neighborhood features like median income, which push every home in a rich tract up and every home in a poor tract down. Our Part 1 cleaning removed no sales, so 108 sales under $25,000 that may not be real market sales stayed in. We used the median ratio so those few extreme sales wouldn’t distort the result.
+*Your answers:* Yes, our model’s ratio rises with neighborhood income.
+In the poorest fifth of neighborhoods, the typical home is predicted at
+89% of its sale price, so it’s under-valued. In the richest fifth, it’s
+predicted 13% above its sale price, so it’s over-valued. This is the
+opposite of “The Tax Divide,” which found the Assessor over-valued
+cheaper homes. We think our model leans on neighborhood features like
+median income, which push every home in a rich tract up and every home
+in a poor tract down. Our Part 1 cleaning removed no sales, so 108 sales
+under \$25,000 that may not be real market sales stayed in. We used the
+median ratio so those few extreme sales wouldn’t distort the result.
 
 ------------------------------------------------------------------------
 
@@ -2027,27 +2058,57 @@ explain the gap on Q7.
 
 1.  **Read one coefficient twice:** once as β̂, once for what it does to
     ŷ.
-    
-The coefficient of building_000sf (each home's square footage) is 382,377. This means that when holding all other variables constant, an increase of 1,000 sq feet is associated with a 382,377 higher sale price based on the training data. Its standard error is 4,961, which tells us how much the coefficient may vary if we had a different sample. 
 
-When the model predicts on the test data, it adds $382,377 per 1,000 sq ft  (or 382 dollars per 1 sq ft) to every house in every neighborhood. As we noted earlier, the model applies this average to every house, no matter the neighborhood. The issue here is that relationships change across space (spacial non-stationarity), so an additional 500 sq is worth more in areas with more expensive land. This appears to be one reason why we get clustered errors. 
-    
+The coefficient of building_000sf (each home's square footage) is
+382,377. This means that when holding all other variables constant, an
+increase of 1,000 sq feet is associated with a 382,377 higher sale price
+based on the training data. Its standard error is 4,961, which tells us
+how much the coefficient may vary if we had a different sample.
+
+When the model predicts on the test data, it adds \$382,377 per 1,000 sq
+ft (or 382 dollars per 1 sq ft) to every house in every neighborhood. As
+we noted earlier, the model applies this average to every house, no
+matter the neighborhood. The issue here is that relationships change
+across space (spacial non-stationarity), so an additional 500 sq is
+worth more in areas with more expensive land. This appears to be one
+reason why we get clustered errors.
+
 2.  **Would you hand this model to the Assessor?** What would you warn
     them about?
 
-We would not hand this model to the Assessor yet because our residual map still shows some spatial clustering. While it is not egregious (Moran's I is .23 for final model), it does mean that our model is missing a spatial variable that would more accurately predict the sales prices. Ultimately, this means that the model could more accurately predict sales prices. We would warn them that our model underpredicts the red clustered points in North Side lakefront in Lincoln Park and Lakeview and that it overpredicts the blue clustered points in Beverly. 
+We would not hand this model to the Assessor yet because our residual
+map still shows some spatial clustering. While it is not egregious
+(Moran's I is .23 for final model), it does mean that our model is
+missing a spatial variable that would more accurately predict the sales
+prices. Ultimately, this means that the model could more accurately
+predict sales prices. We would warn them that our model underpredicts
+the red clustered points in North Side lakefront in Lincoln Park and
+Lakeview and that it overpredicts the blue clustered points in Beverly.
 
-We would also tell the assessor that we did relatively light data manipulation ahead of our regression analysis. We kept all homes in our data that sold for more than \$1. There were 108 houses that sold for less than \$25,000. This means that our data presumably included figures that were non market sales. We chose to prioritize having more data that could possibly resemble our test data, even if it meant retaining potential outliers.  
+We would also tell the assessor that we did relatively light data
+manipulation ahead of our regression analysis. We kept all homes in our
+data that sold for more than \$1. There were 108 houses that sold for
+less than \$25,000. This means that our data presumably included figures
+that were non market sales. We chose to prioritize having more data that
+could possibly resemble our test data, even if it meant retaining
+potential outliers.
 
 *Your answer:*
 
 ### Who did what
- 
-We met two times in person to go over the assignment and go through the code altogether. We all worked on part 1 together. Tegan, Gautami, and Sophia identified the variables we wanted to use and found the associated data. Sophia completed section 2; she loaded the data and built the model. Tegan completed section 3, Gautami completed section 4, and Sara did section 5. We all worked on the reflection.  
- 
+
+We met two times in person to go over the assignment and go through the
+code altogether. We all worked on part 1 together. Tegan, Gautami, and
+Sophia identified the variables we wanted to use and found the
+associated data. Sophia completed section 2; she loaded the data and
+built the model. Tegan completed section 3, Gautami completed section 4,
+and Sara did section 5. We all worked on the reflection.
+
 ### AI Team Statement
 
 What was your team's AI policy and how was AI used in this assignment?
 
-We used it to verify code syntax when we couldn't find it in previous assignments, clarify definitions, and help us interpret instructions that we had trouble understanding. We did not use it for the narrative portions. 
-
+We used it to verify code syntax when we couldn't find it in previous
+assignments, clarify definitions, and help us interpret instructions
+that we had trouble understanding. We did not use it for the narrative
+portions.
